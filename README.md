@@ -1,7 +1,7 @@
 # Neural Network Architecture Benchmarking for Time Series Classification
 
-![Time Series Classification Datasets](https://www.timeseriesclassification.com/dataset.php)
-![ConfigSpace](https://github.com/automl/ConfigSpace/)
+[Time Series Classification Datasets](https://www.timeseriesclassification.com/dataset.php)
+[ConfigSpace](https://github.com/automl/ConfigSpace/)
 
 This project benchmarks five neural network architectures on multiple time series classification datasets. It produces different hyperparameter configurations for each architecture.
 

@@ -94,6 +94,7 @@ class CNN(pl.LightningModule):
         dropout_rate = config["dropout_rate"]
         activation_name = config.get("activation", "relu")
         learning_rate = config["learning_rate"]
+    
 
         activations = {"relu": nn.ReLU(), "tanh": nn.Tanh(), "gelu": nn.GELU(), "elu": nn.ELU(), "sigmoid": nn.Sigmoid()}
 
@@ -121,6 +122,10 @@ class CNN(pl.LightningModule):
             
             if dropout_rate > 0:
                 layers.append(nn.Dropout(dropout_rate))
+
+            if config.get("residual", False) and in_channels == num_filters:
+                layers.append(nn.Sequential(nn.Identity()))
+
             in_channels = num_filters
 
         self.cnn_layers = nn.Sequential(*layers)
@@ -211,7 +216,7 @@ class LSTM(pl.LightningModule):
 
         activations = {"relu": nn.ReLU(), "tanh": nn.Tanh(), "gelu": nn.GELU()}
 
-        activation_layer = activations.get(activation_name, nn.Tanh())  # default to Tanh if not found
+        activation_layer = activations.get(config.get("output_activation", "tanh"), nn.Tanh())  # default to Tanh if not found
 
         # classifier of the LSTM
         self.classifier = nn.Sequential(nn.Linear(hidden_units * directions, hidden_units), activation_layer, nn.Dropout(dropout_rate), nn.Linear(hidden_units, num_classes))
@@ -293,6 +298,17 @@ class GRU(pl.LightningModule):
         dropout = config["dropout_rate"]
         learning_rate = config["learning_rate"]
         weight_decay = config.get("weight_decay", 0.0)
+        output_activation_name = config.get("output_activation", "relu")
+
+        activations = {
+            "relu": nn.ReLU(),
+            "tanh": nn.Tanh(),
+            "gelu": nn.GELU(),
+            "elu": nn.ELU(),
+            "sigmoid": nn.Sigmoid(),
+            "linear": nn.Identity()
+        }
+        output_activation = activations.get(output_activation_name, nn.ReLU())
 
         self.gru = nn.GRU(input_size=num_features, hidden_size=hidden_size, num_layers=num_layers, batch_first=True, dropout=dropout if num_layers > 1 else 0.0, bidirectional=config.get("bidirectional", False))
 
@@ -301,7 +317,7 @@ class GRU(pl.LightningModule):
         classifier_input_size = hidden_size * (2 if config.get("bidirectional", False) else 1)
         
         # classifier of the GRU
-        self.classifier = nn.Sequential(nn.Linear(classifier_input_size, hidden_size), nn.ReLU(), nn.Dropout(dropout), nn.Linear(hidden_size, output_size))
+        self.classifier = nn.Sequential(nn.Linear(classifier_input_size, hidden_size), output_activation, nn.ReLU(), nn.Dropout(dropout), nn.Linear(hidden_size, output_size))
 
         # loss function
         self.loss_fn = nn.CrossEntropyLoss()

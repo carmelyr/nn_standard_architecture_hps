@@ -95,7 +95,6 @@ class CNN(pl.LightningModule):
         activation_name = config.get("activation", "relu")
         learning_rate = config["learning_rate"]
     
-
         activations = {"relu": nn.ReLU(), "tanh": nn.Tanh(), "gelu": nn.GELU(), "elu": nn.ELU(), "sigmoid": nn.Sigmoid()}
 
         activation_layer = activations.get(activation_name, nn.ReLU())  # default to ReLU if not found
@@ -114,17 +113,14 @@ class CNN(pl.LightningModule):
             # pooling layer is added only if seq_len is large enough
             if seq_len > 4:
                 if pooling_type == "max":
-                    layers.append(nn.MaxPool1d(2))
+                    layers.append(nn.MaxPool1d(pooling_size))
                 else:
-                    layers.append(nn.AvgPool1d(2))
+                    layers.append(nn.AvgPool1d(pooling_size))
                 seq_len = seq_len // 2
                 
             
             if dropout_rate > 0:
                 layers.append(nn.Dropout(dropout_rate))
-
-            if config.get("residual", False) and in_channels == num_filters:
-                layers.append(nn.Sequential(nn.Identity()))
 
             in_channels = num_filters
 

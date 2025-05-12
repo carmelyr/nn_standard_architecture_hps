@@ -43,10 +43,8 @@ def get_cnn_config_space(seed=2):
     learning_rate = Float(name="learning_rate", bounds=(1e-4, 1e-2), log=True)      # learning rate with logarithmic scale
     
     activation = Categorical("activation", ["relu", "tanh", "gelu", "elu", "sigmoid"])
-
-    residual = Categorical("residual", [True, False])       # whether to use residual connections
     
-    cs.add([num_filters, num_layers, kernel_size, pooling, pooling_size, dropout_rate, learning_rate, activation, residual])
+    cs.add([num_filters, num_layers, kernel_size, pooling, pooling_size, dropout_rate, learning_rate, activation])
     
     return cs
 

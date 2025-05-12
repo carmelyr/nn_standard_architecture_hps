@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: carmely-nn-standard-hps-job
+  namespace: user-carmely-reiska
+
+spec:
+  completions: 1
+  parallelism: 1
+  template:
+    spec:
+      containers:
+      - name: carmely-nn-standard-hps-container
+        image: ccu-k8s.inf.uni-konstanz.de:32250/carmely.reiska/nn-standard-hps:latest
+
+        resources:
+          requests:
+            memory: "20Gi"
+            cpu: "8"
+          limits:
+            memory: "40Gi"
+            cpu: "16"
+            nvidia.com/gpu: "1"
+
+        volumeMounts:
+        - mountPath: /abyss/home
+          name: cephfs-home
+        - mountPath: /abyss/shared
+          name: cephfs-shared
+        - mountPath: /abyss/datasets
+          name: cephfs-datasets
+          readOnly: true
+        command: ["/bin/bash"]
+        args: ["-c", "sleep 14400"]
+
+      volumes:
+      - name: cephfs-home
+        hostPath:
+          path: "/cephfs/abyss/home/carmely-reiska"
+      - name: cephfs-shared
+        hostPath:
+          path: "/cephfs/abyss/shared"
+      - name: cephfs-datasets
+        hostPath:
+          path: "/cephfs/abyss/datasets"
+
+      imagePullSecrets:
+      - name: registry-ro-login
+
+      restartPolicy: Never
+
+  backoffLimit: 10
+

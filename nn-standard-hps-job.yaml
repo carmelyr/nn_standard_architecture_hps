@@ -31,7 +31,7 @@ spec:
           name: cephfs-datasets
           readOnly: true
         command: ["/bin/bash"]
-        args: ["-c", "sleep 14400"]
+        args: ["-c", "sleep 86400"]
 
       volumes:
       - name: cephfs-home

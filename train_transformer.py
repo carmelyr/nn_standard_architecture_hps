@@ -3,23 +3,25 @@ import json
 import numpy as np
 import pandas as pd
 import torch
+import time
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
 from config_spaces import get_transformer_config_space
 from model_builder import build_transformer
+from pytorch_lightning.callbacks import EarlyStopping
 
 datasets = {
-    "classification_ozone": "datasets/classification_ozone/X_train.csv",
+    #"classification_ozone": "datasets/classification_ozone/X_train.csv",
     "Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
-    "ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
-    "Beef": "datasets/Beef/Beef_TRAIN.txt",
-    "BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
-    "BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
-    "Car": "datasets/Car/Car_TRAIN.txt",
-    "CBF": "datasets/CBF/CBF_TRAIN.txt",
-    "ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
-    "CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
-    "FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
+    #"ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
+    #"Beef": "datasets/Beef/Beef_TRAIN.txt",
+    #"BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
+    #"BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
+    #"Car": "datasets/Car/Car_TRAIN.txt",
+    #"CBF": "datasets/CBF/CBF_TRAIN.txt",
+    #"ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
+    #"CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
+    #"FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
 }
 
 class JSONLogger(pl.callbacks.Callback):
@@ -27,19 +29,33 @@ class JSONLogger(pl.callbacks.Callback):
         super().__init__()
         self.metrics = metrics
 
-    # this method is used to log metrics to a JSON file during training
     def on_train_epoch_end(self, trainer, pl_module):
-        train_loss = trainer.callback_metrics.get("train_loss", torch.tensor(float('nan')))
-        train_acc = trainer.callback_metrics.get("train_accuracy", torch.tensor(float('nan')))
-        self.metrics["train_loss"].append(train_loss.item())
-        self.metrics["train_accuracy"].append(train_acc.item())
+        train_loss = trainer.callback_metrics.get("train_loss", None)
+        train_acc = trainer.callback_metrics.get("train_accuracy", None)
+        self.metrics["train_loss"].append(train_loss.item() if train_loss is not None else None)
+        self.metrics["train_accuracy"].append(train_acc.item() if train_acc is not None else None)
 
-    # this method is used to log metrics to a JSON file during validation
     def on_validation_epoch_end(self, trainer, pl_module):
-        val_loss = trainer.callback_metrics.get("val_loss", torch.tensor(float('nan')))
-        val_acc = trainer.callback_metrics.get("val_accuracy", torch.tensor(float('nan')))
-        self.metrics["val_loss"].append(val_loss.item())
-        self.metrics["val_accuracy"].append(val_acc.item())
+        val_loss = trainer.callback_metrics.get("val_loss", None)
+        val_acc = trainer.callback_metrics.get("val_accuracy", None)
+        self.metrics["val_loss"].append(val_loss.item() if val_loss is not None else None)
+        self.metrics["val_accuracy"].append(val_acc.item() if val_acc is not None else None)
+
+class EpochTimeLogger(pl.callbacks.Callback):
+    def __init__(self, metrics):
+        super().__init__()
+        self.metrics = metrics
+        self.epoch_start_time = None
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        self.epoch_start_time = time.time()
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        if self.epoch_start_time is not None:
+            duration = time.time() - self.epoch_start_time
+            if "epoch_times" not in self.metrics:
+                self.metrics["epoch_times"] = []
+            self.metrics["epoch_times"].append(duration)
 
 def load_dataset(path, dataset_name=None):
     if dataset_name == "classification_ozone":
@@ -60,10 +76,15 @@ def load_dataset(path, dataset_name=None):
         raise ValueError(f"Unsupported file format: {path}")
 
     # handles NaN and infinite values
-    X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
+    if np.isnan(X).any():
+        col_means = np.nanmean(X, axis=0)
+        inds = np.where(np.isnan(X))
+        X[inds] = np.take(col_means, inds[1])
+    X = np.where(np.isposinf(X), 1e6, X)
+    X = np.where(np.isneginf(X), -1e6, X)
     
     # normalizes the data
-    X = (X - X.mean(axis=1, keepdims=True)) / (X.std(axis=1, keepdims=True) + 1e-8)
+    X = (X - X.mean(axis=0)) / (X.std(axis=0) + 1e-8)
 
     # ensures that the labels are integers starting from 0
     y = y - y.min()
@@ -81,7 +102,11 @@ def load_dataset(path, dataset_name=None):
         y = np.concatenate([y, y_aug])
 
     # converts the data to PyTorch tensors and handles the feature dimension
-    X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(-1) if X.ndim == 2 else torch.tensor(X, dtype=torch.float32)
+    X_tensor = torch.tensor(X, dtype=torch.float32)
+    if X.ndim == 2:
+        # For 1D time series, add channel dimension (batch, seq_len) -> (batch, seq_len, 1)
+        X_tensor = X_tensor.unsqueeze(-1)
+    input_shape = (X_tensor.shape[1], X_tensor.shape[2])  # (seq_len, num_features)
     y_tensor = torch.tensor(y, dtype=torch.long)
 
     dataset = TensorDataset(X_tensor, y_tensor)
@@ -103,7 +128,8 @@ def save_results(arch_name, dataset_name, config_idx, metrics):
 def train_transformer():
     config_space = get_transformer_config_space()
 
-    for config_idx in range(5):
+    # 100 configurations
+    for config_idx in range(100):
         sampled_config = dict(config_space.sample_configuration())
         sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
 
@@ -149,7 +175,8 @@ def train_transformer():
                     "val_accuracy": []
                 }
 
-                trainer = pl.Trainer(accelerator="cpu", max_epochs=15, callbacks=[JSONLogger(metrics)], gradient_clip_val=0.5, accumulate_grad_batches=1, log_every_n_steps=1)
+                early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min", min_delta=0.001)
+                trainer = pl.Trainer(accelerator="cpu", max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], gradient_clip_val=1.0, gradient_clip_algorithm="norm", accumulate_grad_batches=1, log_every_n_steps=1)
 
                 print(f"[{dataset_name}] Train size: {len(train_dataset)}, Val size: {len(val_dataset)}")
                 print(f"Transformer config: {sampled_config}")

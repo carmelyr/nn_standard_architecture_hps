@@ -3,10 +3,12 @@ import json
 import numpy as np
 import pandas as pd
 import torch
+import time
 from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
 from config_spaces import get_fcnn_config_space
 from model_builder import build_fcnn
+from pytorch_lightning.callbacks import EarlyStopping
 
 datasets = {
     "classification_ozone": "datasets/classification_ozone/X_train.csv",
@@ -41,6 +43,22 @@ class JSONLogger(pl.callbacks.Callback):
         self.metrics["val_loss"].append(val_loss.item())
         self.metrics["val_accuracy"].append(val_acc.item())
 
+class EpochTimeLogger(pl.callbacks.Callback):
+    def __init__(self, metrics):
+        super().__init__()
+        self.metrics = metrics
+        self.epoch_start_time = None
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        self.epoch_start_time = time.time()
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        if self.epoch_start_time is not None:
+            duration = time.time() - self.epoch_start_time
+            if "epoch_times" not in self.metrics:
+                self.metrics["epoch_times"] = []
+            self.metrics["epoch_times"].append(duration)
+
 def load_dataset(path, dataset_name=None):
     if dataset_name == "classification_ozone":
         X = pd.read_csv("datasets/classification_ozone/X_train.csv").values
@@ -74,7 +92,12 @@ def load_dataset(path, dataset_name=None):
         y_test -= 1
 
     # handles NaN and infinite values
-    X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
+    if np.isnan(X).any():
+        col_means = np.nanmean(X, axis=0)
+        inds = np.where(np.isnan(X))
+        X[inds] = np.take(col_means, inds[1])
+    X = np.where(np.isposinf(X), 1e6, X)
+    X = np.where(np.isneginf(X), -1e6, X)
 
     if X.shape[0] < 100:
         def time_warp(x, factor=0.1):
@@ -133,7 +156,8 @@ def save_results(arch_name, dataset_name, config_idx, metrics):
 def train_fcnn():
     config_space = get_fcnn_config_space()
 
-    for config_idx in range(5):
+    # 100 configurations
+    for config_idx in range(100):
         sampled_config = dict(config_space.sample_configuration())
         sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
 
@@ -167,7 +191,8 @@ def train_fcnn():
                     "val_accuracy": []
                 }
 
-                trainer = pl.Trainer(accelerator="cpu", max_epochs=15, callbacks=[JSONLogger(metrics)])
+                early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
+                trainer = pl.Trainer(accelerator="cpu", max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping])
 
                 trainer.fit(model, train_loader, val_loader)
                 metrics["epochs"] = trainer.current_epoch

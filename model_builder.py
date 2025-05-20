@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import pytorch_lightning as pl
 from typing import Dict, Tuple
+import math
 
 # ---- Fully Connected Neural Network ---- #
 class FCNN(pl.LightningModule):
@@ -56,8 +57,8 @@ class FCNN(pl.LightningModule):
         logits = self(x)
         loss = self.loss_fn(logits, y)
         acc = (logits.argmax(dim=1) == y).float().mean()
-        self.log("train_loss", loss, prog_bar=True)
-        self.log("train_accuracy", acc, prog_bar=True)
+        self.log("train_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("train_accuracy", acc, prog_bar=True, on_step=False, on_epoch=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -65,8 +66,8 @@ class FCNN(pl.LightningModule):
         logits = self(x)
         loss = self.loss_fn(logits, y)
         acc = (logits.argmax(dim=1) == y).float().mean()
-        self.log("val_loss", loss, prog_bar=True)
-        self.log("val_accuracy", acc, prog_bar=True)
+        self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
+        self.log("val_accuracy", acc, prog_bar=True, on_step=False, on_epoch=True)
 
     # this method is used to configure the optimizer
     def configure_optimizers(self):
@@ -106,7 +107,6 @@ class CNN(pl.LightningModule):
 
         for _ in range(num_layers):
             layers.append(nn.Conv1d(in_channels, num_filters, kernel_size, stride=1, padding=kernel_size // 2))
-
             layers.append(activation_layer)
             layers.append(nn.BatchNorm1d(num_filters))
             
@@ -189,91 +189,113 @@ def build_cnn(config: Dict, input_shape: Tuple[int, int, int], num_classes: int)
 class LSTM(pl.LightningModule):
     def __init__(self, config: Dict, input_shape: Tuple[int, int], num_classes: int):
         super(LSTM, self).__init__()
-
         self.save_hyperparameters()
 
         # parameters from configuration space
         hidden_units = config["hidden_units"]
-        num_layers = config["num_layers"]
+        self.num_layers = config["num_layers"]
         dropout_rate = config["dropout_rate"]
-        learning_rate = config["learning_rate"]
+        self.learning_rate = config["learning_rate"]
         bidirectional = config.get("bidirectional", False)
-        activation_name = config.get("activation", "tanh")
-        weight_decay = config.get("weight_decay", 0.0)
-
-        # checks if bidirectional is a numpy boolean and converts it to a native Python boolean
-        if isinstance(bidirectional, np.bool_):
-            bidirectional = bool(bidirectional)
-
-        # LSTM input shape: (batch, seq_len, features)
-        self.lstm = nn.LSTM(input_size=input_shape[1], hidden_size=hidden_units, num_layers=num_layers, batch_first=True, dropout=dropout_rate if num_layers > 1 else 0.0, bidirectional=bidirectional)
+        
+        # main LSTM layer
+        # input shape to the model is (batch, seq_len, features)
+        self.lstm = nn.LSTM(
+            input_size=input_shape[1],      # number of features per timestep
+            hidden_size=hidden_units,
+            num_layers=self.num_layers,
+            batch_first=True,
+            dropout=dropout_rate if self.num_layers > 1 else 0.0,
+            bidirectional=bidirectional
+        )
 
         directions = 2 if bidirectional else 1
 
-        activations = {"relu": nn.ReLU(), "tanh": nn.Tanh(), "gelu": nn.GELU()}
+        # classifier head
+        self.classifier = nn.Sequential(nn.Linear(hidden_units * directions, hidden_units * 2), nn.ReLU(), nn.Dropout(dropout_rate), nn.Linear(hidden_units * 2, num_classes))
+        
+        # applies weight initialization
+        self.apply(self._init_weights)
+        
+        # cross-entropy loss function
+        self.loss_fn = nn.CrossEntropyLoss(label_smoothing=0.1)
+        
+    # this method initializes the weights of the model
+    def _init_weights(self, module):
 
-        activation_layer = activations.get(config.get("output_activation", "tanh"), nn.Tanh())  # default to Tanh if not found
+        # sets weights with a uniform distribution that keeps the scale of gradients roughly the same in all layers
+        # biases are initialized to zero
+        if isinstance(module, nn.Linear):
+            nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                nn.init.constant_(module.bias, 0)
 
-        # classifier of the LSTM
-        self.classifier = nn.Sequential(nn.Linear(hidden_units * directions, hidden_units), activation_layer, nn.Dropout(dropout_rate), nn.Linear(hidden_units, num_classes))
+        elif isinstance(module, nn.LSTM):
+            for name, param in module.named_parameters():
 
-        # loss function
-        self.loss_fn = nn.CrossEntropyLoss()
+                # weights that connect the input vector to the LSTM gates
+                # between input and hidden layers
+                if 'weight_ih' in name:
+                    nn.init.xavier_uniform_(param.data)
 
-        # optimizer parameters
-        self.learning_rate = learning_rate
-        self.weight_decay = weight_decay
+                # recurrent weights, connecting the hidden state to itself over time
+                # helps to preserve the gradient over long sequences
+                elif 'weight_hh' in name:
+                    nn.init.orthogonal_(param.data)
+
+                # LSTM gates are ored in order: [input_gate | forget_gate | cell_gate | output_gate]
+                # each bias vector is split into 4 parts, where each corresponds to a gate
+                # param.size(0) gives the total size
+                # n//4 : n//2 is the forget gate’s slice
+                # forget gate bias is set to 1 to encourage the LSTM to remember things in early training
+                elif 'bias' in name:
+                    param.data.fill_(0)
+                    n = param.size(0)
+                    param.data[(n // 4):(n // 2)].fill_(1)
 
     def forward(self, x):
         x = x.float()
-        
-        # passes input through LSTM
-        # LSTM output shape: (batch, seq_len, hidden_size * directions)
-        # hidden state shape: (num_layers * directions, batch, hidden_size)
-        lstm_out, (hn, _) = self.lstm(x)
-        
-        # if bidirectional, it concatenates the last hidden states from both directions
-        # otherwise, it takes the last hidden state from the last layer
-        if self.lstm.bidirectional:
-            hn = torch.cat((hn[-2], hn[-1]), dim=1)
-        else:
-            hn = hn[-1]
-            
-        return self.classifier(hn)
-
+        lstm_out, _ = self.lstm(x)
+        last_output = lstm_out[:, -1, :]  # takes last timestep
+        return self.classifier(last_output)
+    
     def training_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
-        
-        # checks for NaN values in logits
-        if torch.isnan(logits).any():
-            print("NaN detected in logits!")
-            return None
-        
         loss = self.loss_fn(logits, y)
+        preds = torch.argmax(logits, dim=1)
+        acc = (preds == y).float().mean()
         
-        # checks for NaN values in loss
-        if torch.isnan(loss):
-            print("NaN detected in loss!")
-            return None
-        
-        acc = (logits.argmax(dim=1) == y).float().mean()
-
-        self.log("train_loss", loss, prog_bar=True)
-        self.log("train_accuracy", acc, prog_bar=True)
-
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True)
+        self.log('train_accuracy', acc, on_step=True, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, y = batch
         logits = self(x)
         loss = self.loss_fn(logits, y)
-        acc = (logits.argmax(dim=1) == y).float().mean()
-        self.log("val_loss", loss, prog_bar=True)
-        self.log("val_accuracy", acc, prog_bar=True)
+        preds = torch.argmax(logits, dim=1)
+        acc = (preds == y).float().mean()
+        
+        self.log('val_loss', loss, on_epoch=True, prog_bar=True)
+        self.log('val_accuracy', acc, on_epoch=True, prog_bar=True)
+        return {'val_loss': loss, 'val_accuracy': acc}
 
+    # this method is used to configure the optimizer, called by the trainer
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.hparams.config.get("weight_decay", 0.0))
+
+        # learning rate scheduler
+        # reduces the learning rate when a metric has stopped improving
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_loss"
+            }
+        }
 
 def build_lstm(config: Dict, input_shape: Tuple[int, int], num_classes: int):
     return LSTM(config, input_shape, num_classes)
@@ -296,14 +318,8 @@ class GRU(pl.LightningModule):
         weight_decay = config.get("weight_decay", 0.0)
         output_activation_name = config.get("output_activation", "relu")
 
-        activations = {
-            "relu": nn.ReLU(),
-            "tanh": nn.Tanh(),
-            "gelu": nn.GELU(),
-            "elu": nn.ELU(),
-            "sigmoid": nn.Sigmoid(),
-            "linear": nn.Identity()
-        }
+        activations = {"relu": nn.ReLU(), "tanh": nn.Tanh(), "gelu": nn.GELU(), "elu": nn.ELU(), "sigmoid": nn.Sigmoid(), "linear": nn.Identity()}
+
         output_activation = activations.get(output_activation_name, nn.ReLU())
 
         self.gru = nn.GRU(input_size=num_features, hidden_size=hidden_size, num_layers=num_layers, batch_first=True, dropout=dropout if num_layers > 1 else 0.0, bidirectional=config.get("bidirectional", False))
@@ -364,6 +380,8 @@ def build_gru(config: dict, input_shape: tuple, output_size: int):
 
 # ---- Transformer ---- #
 class TransformerModel(pl.LightningModule):
+    # input format is (sequence_length, num_features)
+    # input to the model will be shaped like (batch_size, sequence_length, num_features)
     def __init__(self, config: Dict, input_shape: Tuple[int, int], num_classes: int):
         super(TransformerModel, self).__init__()
         self.save_hyperparameters()
@@ -376,73 +394,97 @@ class TransformerModel(pl.LightningModule):
         pooling = config.get("pooling", "mean")
         dropout_rate = config["dropout_rate"]
         learning_rate = config["learning_rate"]
-        activation_name = config.get("activation", "relu")
+        activation_name = config.get("activation", "gelu")
         weight_decay = config.get("weight_decay", 0.0)
 
-        # ensures that hidden_units is divisible by num_heads by adjusting its value if needed
-        if hidden_units % num_heads != 0:
-            hidden_units = ((hidden_units // num_heads) + 1) * num_heads
-            print(f"Adjusted hidden_units to {hidden_units} to be divisible by num_heads")
-
-        activation_fn = {"relu": nn.ReLU(), "gelu": nn.GELU(), "elu": nn.ELU(), "sigmoid": nn.Sigmoid(), "tanh": nn.Tanh()}[activation_name]
-
-        # Transformer encoder layer
-        class TransformerEncoderLayer(nn.Module):
-            def __init__(self, d_model, nhead, dim_feedforward, dropout, activation_fn):
+        # ensures that hidden_units is divisible by num_heads for multi-head attention
+        self.hidden_units = ((hidden_units // num_heads) + 1) * num_heads
+        
+        self.activation = nn.GELU()
+        
+        # positional encoding encodes the position of each element in the sequence
+        # added to the input embeddings to provide information about the order of the sequence
+        # generates positional vectors (sine/cosine) and adds them to the input
+        class PositionalEncoding(nn.Module):
+            def __init__(self, d_model: int, max_len: int = 5000):
                 super().__init__()
+                self.d_model = d_model                          # dimension of the model
 
-                # Multihead-Attention layer
-                self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
-                self.linear1 = nn.Linear(d_model, dim_feedforward)
-                self.dropout = nn.Dropout(dropout)
-                self.linear2 = nn.Linear(dim_feedforward, d_model)
+                position = torch.arange(max_len).unsqueeze(1)
+                div_term = torch.exp(torch.arange(0, d_model, 2) * (-math.log(10000.0) / d_model))
+                pe = torch.zeros(1, max_len, d_model)
+                pe[0, :, 0::2] = torch.sin(position * div_term)
 
-                # Layer Normalization and Dropout layers
-                self.norm1 = nn.LayerNorm(d_model)
-                self.norm2 = nn.LayerNorm(d_model)
-                self.dropout1 = nn.Dropout(dropout)
-                self.dropout2 = nn.Dropout(dropout)
+                if d_model % 2 == 0:
+                    pe[0, :, 1::2] = torch.cos(position * div_term)         # for even d_model
+                else:
+                    pe[0, :, 1::2] = torch.cos(position * div_term[:-1])    # for odd d_model
+                self.register_buffer('pe', pe)
 
-                self.activation = activation_fn
+            def forward(self, x: torch.Tensor) -> torch.Tensor:
+                # ensures that input dimensions match
+                if x.size(2) != self.d_model:
+                    raise ValueError(f"Input feature dimension {x.size(2)} doesn't match positional encoding dimension {self.d_model}")
+                return x + self.pe[:, :x.size(1)]
 
-            # src2 is Multihead-Attention output
-            # src is the input to the layer
-            # src_mask is the attention mask
-            # is_causal is a boolean indicating if the attention should be causal
-            # src_key_padding_mask is the key padding mask that is used to ignore certain positions in the input
-            def forward(self, src, src_mask=None, is_causal=False, src_key_padding_mask=None):
-                src2 = self.self_attn(src, src, src, attn_mask=src_mask, key_padding_mask=src_key_padding_mask, need_weights=False, is_causal=is_causal)[0]
-                src = src + self.dropout1(src2)
-                src = self.norm1(src)
-                src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
-                src = src + self.dropout2(src2)
-                src = self.norm2(src)
-                return src
+        # embedding layer that projects the input features to the hidden units
+        self.embedding = nn.Sequential(
+            nn.Linear(input_shape[1], self.hidden_units),
+            nn.LayerNorm(self.hidden_units),
+            nn.Dropout(dropout_rate),
+            PositionalEncoding(self.hidden_units, input_shape[0])
+        )
 
-        # Transformer encoder layer
-        encoder_layer = TransformerEncoderLayer(d_model=hidden_units, nhead=num_heads, dim_feedforward=ff_dim, dropout=dropout_rate, activation_fn=activation_fn)
+        # transformer encoder layer
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=self.hidden_units,
+            nhead=num_heads,
+            dim_feedforward=ff_dim,
+            dropout=dropout_rate,
+            activation="gelu",
+            batch_first=True,
+            norm_first=True
+        )
 
         self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.embedding = nn.Linear(input_shape[1], hidden_units)
-        self.pooling = pooling
-        self.classifier = nn.Linear(hidden_units, num_classes)
+
+        # classifier head
+        self.classifier = nn.Sequential(
+            nn.Linear(self.hidden_units, self.hidden_units),
+            nn.GELU(),
+            nn.Dropout(dropout_rate),
+            nn.LayerNorm(self.hidden_units),
+            nn.Linear(self.hidden_units, num_classes)
+        )
+
+        # weights initialization
+        self.apply(self._init_weights)
+        
+        # optimizer parameters and loss function
         self.loss_fn = nn.CrossEntropyLoss()
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
+        self.pooling = pooling
+
+    # this method initializes the weights of the model
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            nn.init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                nn.init.constant_(module.bias, 0)
+        elif isinstance(module, nn.LayerNorm):
+            nn.init.constant_(module.weight, 1.0)
+            nn.init.constant_(module.bias, 0)
 
     def forward(self, x):
         x = self.embedding(x)
-        x = x.permute(1, 0, 2)      # (seq_len, batch, hidden)
         x = self.transformer(x)
-        x = x.permute(1, 0, 2)      # (batch, seq_len, hidden)
-
-        # applies pooling
-        # if pooling is "mean", it averages the outputs across the sequence length
-        # otherwise, it takes the maximum output across the sequence length
+        
         if self.pooling == "mean":
             x = x.mean(dim=1)
         else:
             x = x.max(dim=1).values
+            
         return self.classifier(x)
 
     def training_step(self, batch, batch_idx):
@@ -463,8 +505,21 @@ class TransformerModel(pl.LightningModule):
         self.log("val_accuracy", acc, prog_bar=True)
 
     def configure_optimizers(self):
-        return torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        optimizer = torch.optim.AdamW(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
 
+        # learning rate scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_loss",
+                "interval": "epoch",
+                "frequency": 1
+            }
+        }
+    
 # ---- Transformer builder function ---- #
 def build_transformer(config: Dict, input_shape: Tuple[int, int], num_classes: int):
     return TransformerModel(config, input_shape, num_classes)

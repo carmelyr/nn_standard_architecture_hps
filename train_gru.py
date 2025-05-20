@@ -3,23 +3,25 @@ import json
 import numpy as np
 import pandas as pd
 import torch
+import time
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
 from config_spaces import get_gru_config_space 
 from model_builder import build_gru
+from pytorch_lightning.callbacks import EarlyStopping
 
 datasets = {
-    "classification_ozone": "datasets/classification_ozone/X_train.csv",
-    "Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
+    #"classification_ozone": "datasets/classification_ozone/X_train.csv",
+    #"Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
     "ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
-    "Beef": "datasets/Beef/Beef_TRAIN.txt",
-    "BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
-    "BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
-    "Car": "datasets/Car/Car_TRAIN.txt",
-    "CBF": "datasets/CBF/CBF_TRAIN.txt",
-    "ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
-    "CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
-    "FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
+    #"Beef": "datasets/Beef/Beef_TRAIN.txt",
+    #"BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
+    #"BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
+    #"Car": "datasets/Car/Car_TRAIN.txt",
+    #"CBF": "datasets/CBF/CBF_TRAIN.txt",
+    #"ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
+    #"CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
+    #"FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
 }
 
 class JSONLogger(pl.callbacks.Callback):
@@ -39,6 +41,22 @@ class JSONLogger(pl.callbacks.Callback):
         self.metrics["val_loss"].append(val_loss.item() if val_loss else None)
         self.metrics["val_accuracy"].append(val_acc.item() if val_acc else None)
 
+class EpochTimeLogger(pl.callbacks.Callback):
+    def __init__(self, metrics):
+        super().__init__()
+        self.metrics = metrics
+        self.epoch_start_time = None
+
+    def on_train_epoch_start(self, trainer, pl_module):
+        self.epoch_start_time = time.time()
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        if self.epoch_start_time is not None:
+            duration = time.time() - self.epoch_start_time
+            if "epoch_times" not in self.metrics:
+                self.metrics["epoch_times"] = []
+            self.metrics["epoch_times"].append(duration)
+
 def load_dataset(path, dataset_name=None):
     if dataset_name == "classification_ozone":
         X = pd.read_csv("datasets/classification_ozone/X_train.csv").values
@@ -54,8 +72,13 @@ def load_dataset(path, dataset_name=None):
         y = data[:, 0].astype(int)
         X = data[:, 1:]
 
-    # this is used to handle NaN and infinite values
-    X = np.nan_to_num(X, nan=0.0, posinf=1e6, neginf=-1e6)
+    # handles NaN and infinite values
+    if np.isnan(X).any():
+        col_means = np.nanmean(X, axis=0)
+        inds = np.where(np.isnan(X))
+        X[inds] = np.take(col_means, inds[1])
+    X = np.where(np.isposinf(X), 1e6, X)
+    X = np.where(np.isneginf(X), -1e6, X)
 
     label_mapping = {orig_label: idx for idx, orig_label in enumerate(sorted(np.unique(y)))}
     y = np.array([label_mapping[label] for label in y])
@@ -95,7 +118,8 @@ def save_results(arch_name, dataset_name, config_idx, metrics):
 def train_gru():
     config_space = get_gru_config_space()
 
-    for config_idx in range(5):
+    # 100 configurations
+    for config_idx in range(100):
         sampled_config = dict(config_space.sample_configuration())
         sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
 
@@ -134,7 +158,8 @@ def train_gru():
 
                 accelerator = "mps" if torch.backends.mps.is_available() else "cpu"
 
-                trainer = pl.Trainer(accelerator=accelerator, max_epochs=15, callbacks=[JSONLogger(metrics)], log_every_n_steps=1, gradient_clip_val=1.0)
+                early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
+                trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], log_every_n_steps=1, gradient_clip_val=1.0)
 
                 trainer.fit(model, train_loader, val_loader)
                 metrics["epochs"] = trainer.current_epoch

@@ -44,10 +44,12 @@ def load_results(base_dir="results"):
     return pd.DataFrame(records)
 
 def generate_heatmap(df, metric="max_val_accuracy"):
-    pivot = df.groupby(["dataset", "classifier"])[metric].mean().unstack()
-    plt.figure(figsize=(10, len(pivot) * 0.6))
-    sns.heatmap(pivot, annot=True, fmt=".2f", cmap="RdPu")
-    plt.title(f"Validation Accuracy on Convergence ({metric})")
+    pivot = df.groupby(["dataset", "classifier"])[metric].max().unstack()
+    #pivot = df.groupby(["dataset", "classifier"])[metric].mean().unstack()
+
+    plt.figure(figsize=(12, len(pivot) * 0.7))
+    sns.heatmap(pivot, annot=True, fmt=".2f", cmap="RdPu", vmin=0, vmax=1)
+    plt.title(f"Validation Accuracy Heatmap ({metric})")
     plt.xlabel("Classifier")
     plt.ylabel("Dataset")
     plt.tight_layout()

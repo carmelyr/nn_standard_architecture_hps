@@ -1,0 +1,71 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: carmely-nn-standard-hps-job-cnn
+  namespace: user-carmely-reiska
+spec:
+  completions: 1
+  parallelism: 1
+  template:
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: belial
+      containers:
+      - name: carmely-nn-standard-hps-container
+        image: ccu-k8s.inf.uni-konstanz.de:32250/carmely.reiska/nn-standard-hps:latest
+        resources:
+          requests:
+            memory: "20Gi"
+            cpu: "4"
+            nvidia.com/gpu: "1"
+          limits:
+            memory: "40Gi"
+            cpu: "8"
+            nvidia.com/gpu: "1"
+        volumeMounts:
+          - mountPath: /abyss/home
+            name: cephfs-home
+            readOnly: false
+          - mountPath: /abyss/shared
+            name: cephfs-shared
+            readOnly: false
+          - mountPath: /abyss/datasets
+            name: cephfs-datasets
+            readOnly: true
+        command: ["/bin/bash"]
+        args:
+          - -c
+          - >-
+            set -euxo pipefail &&
+            export POD_ID=${RUN_ID##*-} &&
+            mkdir -p /abyss/home/results/cnn/$POD_ID &&
+            cd && cd .. && cd workspace &&
+            cp -r /abyss/home/nn_standard_architecture_hps . &&
+            cd nn_standard_architecture_hps &&
+            python train_cnn.py &> log_cnn_$POD_ID.txt &&
+            cp log_cnn_$POD_ID.txt /abyss/home/logs/ &&
+            echo "Contents of results/CNN:" &&
+            ls -lh /workspace/nn_standard_architecture_hps/results/CNN/ &&
+            cp -v /workspace/nn_standard_architecture_hps/results/CNN/* /abyss/home/results/cnn/$POD_ID/ &&
+            echo "Copied files to /abyss/home/results/cnn/$POD_ID:" &&
+            ls -lh /abyss/home/results/cnn/$POD_ID/
+        env:
+          - name: RUN_ID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.name
+      volumes:
+        - name: cephfs-home
+          hostPath:
+            path: "/cephfs/abyss/home/carmely-reiska"
+        - name: cephfs-shared
+          hostPath:
+            path: "/cephfs/abyss/shared"
+        - name: cephfs-datasets
+          hostPath:
+            path: "/cephfs/abyss/datasets"
+      imagePullSecrets:
+        - name: registry-ro-login
+      restartPolicy: Never
+  backoffLimit: 10
+

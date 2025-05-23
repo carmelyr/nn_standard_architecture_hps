@@ -11,17 +11,17 @@ from model_builder import build_lstm
 from pytorch_lightning.callbacks import EarlyStopping
 
 datasets = {
-    #"classification_ozone": "datasets/classification_ozone/X_train.csv",
-    #"Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
-    #"ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
-    #"Beef": "datasets/Beef/Beef_TRAIN.txt",
-    #"BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
-    #"BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
-    #"Car": "datasets/Car/Car_TRAIN.txt",
-    #"CBF": "datasets/CBF/CBF_TRAIN.txt",
+    "classification_ozone": "datasets/classification_ozone/X_train.csv",
+    "Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
+    "ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
+    "Beef": "datasets/Beef/Beef_TRAIN.txt",
+    "BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
+    "BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
+    "Car": "datasets/Car/Car_TRAIN.txt",
+    "CBF": "datasets/CBF/CBF_TRAIN.txt",
     "ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
-    #"CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
-    #"FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
+    "CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
+    "FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
 }
 
 class JSONLogger(pl.callbacks.Callback):

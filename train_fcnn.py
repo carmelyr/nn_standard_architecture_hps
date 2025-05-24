@@ -6,7 +6,7 @@ import torch
 import time
 from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
-from config_spaces import get_fcnn_config_space
+from config_spaces import get_fcnn_config_space, fcnn_seed
 from model_builder import build_fcnn
 from pytorch_lightning.callbacks import EarlyStopping
 
@@ -144,13 +144,27 @@ def load_dataset(path, dataset_name=None):
     return dataset, X_tensor.shape[1:], num_classes
 
 # this function saves the results of the training to a JSON file
-def save_results(arch_name, dataset_name, config_idx, metrics):
+"""def save_results(arch_name, dataset_name, config_idx, metrics, fcnn_):
     result_dir = os.path.join("results", arch_name)
     os.makedirs(result_dir, exist_ok=True)
     out_path = os.path.join(result_dir, f"{dataset_name}_config_{config_idx + 1}.json")
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=4)
-    print(f"Saved: {out_path}")
+    print(f"Saved: {out_path}")"""
+def save_results(arch_name, dataset_name, config_idx, metrics, fcnn_seed):
+    # directory structure
+    config_id = config_idx + 1
+    result_dir = os.path.join("results", arch_name, dataset_name, f"config_{config_id}")
+    os.makedirs(result_dir, exist_ok=True)
+
+    # full filename
+    filename = f"{dataset_name}_config_{config_id}_seed{fcnn_seed}.json"
+    out_path = os.path.join(result_dir, filename)
+
+    with open(out_path, "w") as f:
+        json.dump(metrics, f, indent=4)
+    print(f"✔ Saved: {out_path}")
+
 
 # this function trains the FCNN model on the datasets
 def train_fcnn():
@@ -196,7 +210,7 @@ def train_fcnn():
 
                 trainer.fit(model, train_loader, val_loader)
                 metrics["epochs"] = trainer.current_epoch
-                save_results("FCNN", dataset_name, config_idx, metrics)
+                save_results("FCNN", dataset_name, config_idx, metrics, fcnn_seed)
 
             except Exception as e:
                 print(f"Failed for {dataset_name} config {config_idx}: {e}")

@@ -6,7 +6,7 @@ import torch
 import time
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
-from config_spaces import get_gru_config_space 
+from config_spaces import get_gru_config_space, gru_seed
 from model_builder import build_gru
 from pytorch_lightning.callbacks import EarlyStopping
 
@@ -106,13 +106,19 @@ def load_dataset(path, dataset_name=None):
     return dataset, X_tensor.shape[1:], len(label_mapping)
 
 # this function is used to save the results of the training
-def save_results(arch_name, dataset_name, config_idx, metrics):
-    result_dir = os.path.join("results", arch_name)
+def save_results(arch_name, dataset_name, config_idx, metrics, gru_seed):
+    # directory structure
+    config_id = config_idx + 1
+    result_dir = os.path.join("results", arch_name, dataset_name, f"config_{config_id}")
     os.makedirs(result_dir, exist_ok=True)
-    out_path = os.path.join(result_dir, f"{dataset_name}_config_{config_idx + 1}.json")
+
+    # full filename
+    filename = f"{dataset_name}_config_{config_id}_seed{gru_seed}.json"
+    out_path = os.path.join(result_dir, filename)
+
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=4)
-    print(f"Saved: {out_path}")
+    print(f"✔ Saved: {out_path}")
 
 # this function is used to train the GRU model
 def train_gru():
@@ -163,7 +169,7 @@ def train_gru():
 
                 trainer.fit(model, train_loader, val_loader)
                 metrics["epochs"] = trainer.current_epoch
-                save_results("GRU", dataset_name, config_idx, metrics)
+                save_results("GRU", dataset_name, config_idx, metrics, gru_seed)
 
             except Exception as e:
                 print(f"Failed for {dataset_name} config {config_idx}: {str(e)}")

@@ -3,16 +3,43 @@ import json
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
+from collections import defaultdict
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 
-
-def load_results(dataset_name, arch_name):
+"""def load_results(dataset_name, arch_name):
     result_dir = os.path.join("results", arch_name)
     if dataset_name == "ALL":
         datasets = sorted(set(f.split("_")[0] for f in os.listdir(result_dir) if f.endswith(".json")))
         return {d: load_results(d, arch_name) for d in datasets}
     else:
         files = [f for f in os.listdir(result_dir) if f.startswith(dataset_name) and f.endswith(".json")]
-        return [json.load(open(os.path.join(result_dir, f), "r")) for f in files]
+        return [json.load(open(os.path.join(result_dir, f), "r")) for f in files]"""
+
+def load_results(dataset_name, arch_name):
+    result_dir = os.path.join("results", arch_name)
+
+    if dataset_name == "ALL":
+        # gets all dataset folders in the architecture directory
+        dataset_names = sorted(d for d in os.listdir(result_dir) if os.path.isdir(os.path.join(result_dir, d)))
+        return {d: load_results(d, arch_name) for d in dataset_names}
+
+    # all JSON result files for one dataset
+    dataset_dir = os.path.join(result_dir, dataset_name)
+    if not os.path.exists(dataset_dir):
+        return []
+
+    all_metrics = []
+    for config_dir in sorted(os.listdir(dataset_dir)):
+        config_path = os.path.join(dataset_dir, config_dir)
+        if not os.path.isdir(config_path):
+            continue
+        for filename in os.listdir(config_path):
+            if filename.endswith(".json") and filename.startswith(dataset_name):
+                file_path = os.path.join(config_path, filename)
+                with open(file_path, "r") as f:
+                    all_metrics.append(json.load(f))
+    return all_metrics
 
 # default architecture is FCNN, unless specified otherwise
 def plot_learning_curves(dataset_name, metric="val_accuracy", arch_name="FCNN"):
@@ -26,7 +53,7 @@ def plot_learning_curves(dataset_name, metric="val_accuracy", arch_name="FCNN"):
         _plot_dataset(dataset_name, all_metrics, metric, arch_name)
 
 
-def _plot_dataset(dataset_name, all_metrics, metric, arch_name):
+"""def _plot_dataset(dataset_name, all_metrics, metric, arch_name):
     max_epochs = max(len(run[metric]) for run in all_metrics)
     metric_matrix = np.full((len(all_metrics), max_epochs), np.nan)
 
@@ -60,8 +87,81 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name):
     plot_dir = os.path.join(os.path.dirname(__file__), "plots", arch_name)
     os.makedirs(plot_dir, exist_ok=True)
     plt.savefig(os.path.join(plot_dir, f"{dataset_name}_{metric}.png"), dpi=300)
-    plt.close()
+    plt.close()"""
 
+def _plot_dataset(dataset_name, all_metrics, metric, arch_name):
+    grouped = defaultdict(list)
+    for config_dir in os.listdir(os.path.join("results", arch_name, dataset_name)):
+        if not config_dir.startswith("config_"):
+            continue
+        config_path = os.path.join("results", arch_name, dataset_name, config_dir)
+        for f in os.listdir(config_path):
+            if f.endswith(".json") and f.startswith(dataset_name):
+                config_id = config_dir.replace("config_", "")
+                with open(os.path.join(config_path, f), "r") as file:
+                    grouped[config_id].append(json.load(file))
+
+    # plots mean and std of the metric for each config
+    plt.figure(figsize=(10, 5))
+    for config_id, runs in grouped.items():
+        max_epochs = max(len(run[metric]) for run in runs)
+        matrix = np.full((len(runs), max_epochs), np.nan)
+        for i, run in enumerate(runs):
+            matrix[i, :len(run[metric])] = run[metric]
+
+        mean_curve = np.nanmean(matrix, axis=0)
+        std_curve = np.nanstd(matrix, axis=0)
+        epochs = np.arange(1, len(mean_curve) + 1)
+
+        # plots each config's mean curve
+        plt.plot(epochs, mean_curve, color='Plum', alpha=0.3)
+        plt.fill_between(epochs, mean_curve - std_curve, mean_curve + std_curve, color='DeepPink', alpha=0.1)
+
+    # plots the global mean and std of the metric across all configs
+    global_max_len = max(len(r[metric]) for runs in grouped.values() for r in runs)
+
+    all_matrix = []
+    for runs in grouped.values():
+        for r in runs:
+            padded = np.full(global_max_len, np.nan)
+            padded[:len(r[metric])] = r[metric]
+            all_matrix.append(padded)
+    all_matrix = np.vstack(all_matrix)
+
+    global_mean = np.nanmean(all_matrix, axis=0)
+    global_std = np.nanstd(all_matrix, axis=0)
+    epochs = np.arange(1, len(global_mean) + 1)
+    plt.plot(epochs, global_mean, color='blue', linewidth=2, label="Global Mean")
+    plt.fill_between(epochs, global_mean - global_std, global_mean + global_std, color='blue', alpha=0.2)
+
+    custom_lines = [
+        Line2D([0], [0], color='Plum', lw=2, alpha=0.6, label='Per-config Mean'),
+        Patch(facecolor='DeepPink', edgecolor='none', label='Per-config Std Dev'),
+        Line2D([0], [0], color='blue', lw=2, label='Global Mean'),
+        Patch(facecolor='blue', edgecolor='none', alpha=0.2, label='Global Std Dev')
+    ]
+
+    plt.legend(handles=custom_lines, loc='lower right')
+
+    plt.title(f"Validation Accuracy Over Epochs\n{dataset_name} ({arch_name})")
+    plt.xlabel("Epoch")
+    plt.ylabel(metric.replace("_", " ").title())
+    plt.grid(True)
+
+    # counts of configurations and runs
+    num_configs = len(grouped)
+    runs_per_config = np.mean([len(runs) for runs in grouped.values()])
+    total_runs = sum(len(runs) for runs in grouped.values())
+
+    text = f"Configurations: {num_configs} | Runs/config: {int(runs_per_config)} | Total runs: {total_runs}"
+    plt.text(0.01, 0.01, text, transform=plt.gca().transAxes, fontsize=9, color='gray', ha='left', va='bottom')
+
+    plt.tight_layout()
+
+    plot_dir = os.path.join(os.path.dirname(__file__), "plots", arch_name)
+    os.makedirs(plot_dir, exist_ok=True)
+    plt.savefig(os.path.join(plot_dir, f"{dataset_name}_{metric}.png"), dpi=300)
+    plt.close()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -74,4 +174,5 @@ if __name__ == "__main__":
         for dataset in args.dataset:
             print(f"Plotting: {dataset} | {arch} | {args.metric}")
             plot_learning_curves(dataset, args.metric, arch)
+
 

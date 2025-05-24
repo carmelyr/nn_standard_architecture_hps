@@ -6,7 +6,7 @@ import torch
 import time
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
-from config_spaces import get_transformer_config_space
+from config_spaces import get_transformer_config_space, transformer_seed
 from model_builder import build_transformer
 from pytorch_lightning.callbacks import EarlyStopping
 
@@ -116,13 +116,19 @@ def load_dataset(path, dataset_name=None):
     return dataset, input_shape, num_classes
 
 # this method is used to save the results of the training
-def save_results(arch_name, dataset_name, config_idx, metrics):
-    result_dir = os.path.join("results", arch_name)
+def save_results(arch_name, dataset_name, config_idx, metrics, transformer_seed):
+    # directory structure
+    config_id = config_idx + 1
+    result_dir = os.path.join("results", arch_name, dataset_name, f"config_{config_id}")
     os.makedirs(result_dir, exist_ok=True)
-    out_path = os.path.join(result_dir, f"{dataset_name}_config_{config_idx + 1}.json")
+
+    # full filename
+    filename = f"{dataset_name}_config_{config_id}_seed{transformer_seed}.json"
+    out_path = os.path.join(result_dir, filename)
+
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=4)
-    print(f"Saved: {out_path}")
+    print(f"✔ Saved: {out_path}")
 
 # this method is used to train the transformer model
 def train_transformer():
@@ -183,7 +189,7 @@ def train_transformer():
 
                 trainer.fit(model, train_loader, val_loader)
                 metrics["epochs"] = trainer.current_epoch
-                save_results("Transformer", dataset_name, config_idx, metrics)
+                save_results("Transformer", dataset_name, config_idx, metrics, transformer_seed)
 
             except Exception as e:
                 print(f"Failed for {dataset_name} config {config_idx}: {e}")

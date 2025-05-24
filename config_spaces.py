@@ -2,8 +2,14 @@
 
 from ConfigSpace import ConfigurationSpace, Integer, Float, Categorical
 
+fcnn_seed = 5
+cnn_seed = 2
+lstm_seed = 5
+gru_seed = 3
+transformer_seed = 6
+
 #---- FCNN ----#
-def get_fcnn_config_space(seed=1):
+def get_fcnn_config_space(seed=fcnn_seed):
 
     cs = ConfigurationSpace(name="FCNN", seed=seed)
 
@@ -24,7 +30,7 @@ def get_fcnn_config_space(seed=1):
     return cs
 
 #---- CNN ----#
-def get_cnn_config_space(seed=2):
+def get_cnn_config_space(seed=cnn_seed):
 
     cs = ConfigurationSpace(name="CNN", seed=seed)
 
@@ -49,7 +55,7 @@ def get_cnn_config_space(seed=2):
     return cs
 
 #---- LSTM ----#
-def get_lstm_config_space(seed=5):
+def get_lstm_config_space(seed=lstm_seed):
 
     cs = ConfigurationSpace(name="LSTM", seed=seed)
 
@@ -72,7 +78,7 @@ def get_lstm_config_space(seed=5):
     return cs
 
 #---- GRU ----#
-def get_gru_config_space(seed=4):
+def get_gru_config_space(seed=gru_seed):
 
     cs = ConfigurationSpace(name="GRU", seed=seed)
 
@@ -95,7 +101,7 @@ def get_gru_config_space(seed=4):
     return cs
 
 #---- Transformer ----#
-def get_transformer_config_space(seed=6):
+def get_transformer_config_space(seed=transformer_seed):
 
     cs = ConfigurationSpace(name="Transformer", seed=seed)
 

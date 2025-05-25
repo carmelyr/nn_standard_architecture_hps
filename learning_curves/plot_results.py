@@ -107,7 +107,8 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name):
         max_epochs = max(len(run[metric]) for run in runs)
         matrix = np.full((len(runs), max_epochs), np.nan)
         for i, run in enumerate(runs):
-            matrix[i, :len(run[metric])] = run[metric]
+            cleaned = [v if v is not None else np.nan for v in run[metric]]
+            matrix[i, :len(cleaned)] = cleaned
 
         mean_curve = np.nanmean(matrix, axis=0)
         std_curve = np.nanstd(matrix, axis=0)
@@ -124,7 +125,8 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name):
     for runs in grouped.values():
         for r in runs:
             padded = np.full(global_max_len, np.nan)
-            padded[:len(r[metric])] = r[metric]
+            cleaned = [v if v is not None else np.nan for v in r[metric]]
+            padded[:len(cleaned)] = cleaned
             all_matrix.append(padded)
     all_matrix = np.vstack(all_matrix)
 

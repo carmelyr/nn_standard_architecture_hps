@@ -3,7 +3,7 @@
 from ConfigSpace import ConfigurationSpace, Integer, Float, Categorical
 
 fcnn_seed = 5
-cnn_seed = 2
+cnn_seed = 1
 lstm_seed = 5
 gru_seed = 3
 transformer_seed = 6

@@ -10,36 +10,49 @@ def load_results(base_dir="results"):
         clf_dir = os.path.join(base_dir, clf)
         if not os.path.isdir(clf_dir):
             continue
-        for file in os.listdir(clf_dir):
-            if not file.endswith(".json"):
+            
+        # dataset folders inside classifier folder
+        for dataset_name in os.listdir(clf_dir):
+            dataset_dir = os.path.join(clf_dir, dataset_name)
+            if not os.path.isdir(dataset_dir):
                 continue
-            filepath = os.path.join(clf_dir, file)
-            with open(filepath) as f:
-                data = json.load(f)
-            dataset = data["dataset_stats"]["name"]
-            val_acc = data.get("val_accuracy", [])
-            # filters out None values
-            val_acc = [v for v in val_acc if isinstance(v, (int, float)) and v is not None]
+                
+            # config folders inside dataset folder
+            for config in os.listdir(dataset_dir):
+                config_dir = os.path.join(dataset_dir, config)
+                if not os.path.isdir(config_dir):
+                    continue
+                    
+                # JSON files in the config directory
+                for file in os.listdir(config_dir):
+                    if not file.endswith(".json"):
+                        continue
+                        
+                    filepath = os.path.join(config_dir, file)
+                    with open(filepath) as f:
+                        data = json.load(f)
+                        
+                    dataset = data["dataset_stats"]["name"]
+                    val_acc = data.get("val_accuracy", [])
+                    val_acc = [v for v in val_acc if isinstance(v, (int, float)) and v is not None]
 
-            # skips if the list is now empty
-            if not val_acc:
-                continue
+                    if not val_acc:
+                        continue
 
-            max_val = max(val_acc)
-            avg_val = sum(val_acc) / len(val_acc)
+                    max_val = max(val_acc)
+                    avg_val = sum(val_acc) / len(val_acc)
 
-            record = {
-                "dataset": dataset,
-                "classifier": clf,
-                "max_val_accuracy": max_val,
-                "avg_val_accuracy": avg_val
-            }
+                    record = {
+                        "dataset": dataset,
+                        "classifier": clf,
+                        "max_val_accuracy": max_val,
+                        "avg_val_accuracy": avg_val
+                    }
 
-            # adds each hyperparameter as a separate key
-            for k, v in data.get("hyperparameters", {}).items():
-                record[k] = v
+                    for k, v in data.get("hyperparameters", {}).items():
+                        record[k] = v
 
-            records.append(record)
+                    records.append(record)
 
     return pd.DataFrame(records)
 

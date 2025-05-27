@@ -7,6 +7,11 @@ from collections import defaultdict
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
+# this method returns the last non-None value in a list or np.nan if none found
+def last_valid(values):
+    return next((v for v in reversed(values) if v is not None and not np.isnan(v)), np.nan)
+
+
 """def load_results(dataset_name, arch_name):
     result_dir = os.path.join("results", arch_name)
     if dataset_name == "ALL":
@@ -115,8 +120,8 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name):
         epochs = np.arange(1, len(mean_curve) + 1)
 
         # plots each config's mean curve
-        plt.plot(epochs, mean_curve, color='Plum', alpha=0.3)
-        plt.fill_between(epochs, mean_curve - std_curve, mean_curve + std_curve, color='DeepPink', alpha=0.1)
+        plt.plot(epochs, mean_curve, color='#D1A0B1', alpha=0.3, lw=0.8)
+        plt.fill_between(epochs, mean_curve - std_curve, mean_curve + std_curve, color='#C51B7D', alpha=0.2)
 
     # plots the global mean and std of the metric across all configs
     global_max_len = max(len(r[metric]) for runs in grouped.values() for r in runs)
@@ -133,14 +138,14 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name):
     global_mean = np.nanmean(all_matrix, axis=0)
     global_std = np.nanstd(all_matrix, axis=0)
     epochs = np.arange(1, len(global_mean) + 1)
-    plt.plot(epochs, global_mean, color='blue', linewidth=2, label="Global Mean")
-    plt.fill_between(epochs, global_mean - global_std, global_mean + global_std, color='blue', alpha=0.2)
+    plt.plot(epochs, global_mean, color='#7A0177', linewidth=2, label="Global Mean")
+    plt.fill_between(epochs, global_mean - global_std, global_mean + global_std, color="#9D75F1", alpha=0.2)
 
     custom_lines = [
-        Line2D([0], [0], color='Plum', lw=2, alpha=0.6, label='Per-config Mean'),
-        Patch(facecolor='DeepPink', edgecolor='none', label='Per-config Std Dev'),
-        Line2D([0], [0], color='blue', lw=2, label='Global Mean'),
-        Patch(facecolor='blue', edgecolor='none', alpha=0.2, label='Global Std Dev')
+        Line2D([0], [0], color="#D1A0B1", lw=2, alpha=0.6, label='Per-config Mean'),
+        Patch(facecolor='#C51B7D', edgecolor='none', label='Per-config Std Dev'),
+        Line2D([0], [0], color='#7A0177', lw=2, label='Global Mean'),
+        Patch(facecolor="#9D75F1", edgecolor='none', alpha=0.2, label='Global Std Dev')
     ]
 
     plt.legend(handles=custom_lines, loc='lower right')
@@ -157,6 +162,17 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name):
 
     text = f"Configurations: {num_configs} | Runs/config: {int(runs_per_config)} | Total runs: {total_runs}"
     plt.text(0.01, 0.01, text, transform=plt.gca().transAxes, fontsize=9, color='gray', ha='left', va='bottom')
+
+    last_vals = []
+    for runs in grouped.values():
+        for r in runs:
+            cleaned = [v if v is not None else np.nan for v in r[metric]]
+            last = last_valid(cleaned)
+            last_vals.append(last)
+
+    max_last = np.nanmax(last_vals)
+    mean_last = np.nanmean(last_vals)
+    print(f"[{dataset_name} - {arch_name}] Max final {metric}: {max_last:.4f} | Mean final: {mean_last:.4f}")
 
     plt.tight_layout()
 

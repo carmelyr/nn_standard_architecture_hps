@@ -205,8 +205,18 @@ def train_fcnn():
                     "val_accuracy": []
                 }
 
+                if torch.cuda.is_available():
+                    accelerator = "gpu"
+                    print("Using CUDA backend")
+                elif torch.backends.mps.is_available():
+                    accelerator = "mps"
+                    print("Using MPS backend")
+                else:
+                    accelerator = "cpu"
+                    print("Using CPU")
+
                 early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
-                trainer = pl.Trainer(accelerator="cpu", max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping])
+                trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping])
 
                 trainer.fit(model, train_loader, val_loader)
                 metrics["epochs"] = trainer.current_epoch

@@ -62,7 +62,7 @@ spec:
               cp log_gru_$POD_ID.txt /abyss/home/logs/ &&
               echo "Contents of results/GRU:" &&
               ls -lh /workspace/nn_standard_architecture_hps/results/GRU/ &&
-              cp -v /workspace/nn-standard-architecture_hps/results/GRU/* /abyss/home/results/gru/$POD_ID/ &&
+              cp -v /workspace/nn_standard_architecture_hps/results/GRU/* /abyss/home/results/gru/$POD_ID/ &&
               echo "Copied files to /abyss/home/results/gru/$POD_ID:" &&
               ls -lh /abyss/home/results/gru/$POD_ID/
           env:

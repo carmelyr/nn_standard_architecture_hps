@@ -172,9 +172,19 @@ def train_lstm():
                     "val_accuracy": []
                 }
 
+                if torch.cuda.is_available():
+                    accelerator = "gpu"
+                    print("Using CUDA backend")
+                elif torch.backends.mps.is_available():
+                    accelerator = "mps"
+                    print("Using MPS backend")
+                else:
+                    accelerator = "cpu"
+                    print("Using CPU")
+
 
                 early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
-                trainer = pl.Trainer(accelerator="cpu", max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], gradient_clip_val=1.0, accumulate_grad_batches=2, log_every_n_steps=1)
+                trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], gradient_clip_val=1.0, accumulate_grad_batches=2, log_every_n_steps=1)
 
                 print(f"[{dataset_name}] Train size: {len(train_dataset)}, Val size: {len(val_dataset)}")
 

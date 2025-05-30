@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 import time
+import random
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
 from config_spaces import get_cnn_config_space, cnn_seed
@@ -147,72 +148,83 @@ def save_results(arch_name, dataset_name, config_idx, metrics, cnn_seed):
 # - samples configurations from the config space and trains the model on each dataset
 # - handles the splitting of the dataset into training and validation sets
 def train_cnn():
+    seeds = [1, 2, 3, 4, 5]
     config_space = get_cnn_config_space()
 
-    # 100 configurations
-    for config_idx in range(100):
-        sampled_config = dict(config_space.sample_configuration())
-        sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
+    for cnn_seed in seeds:
+        print(f"\n=== Running for SEED {cnn_seed} ===")
 
-        for dataset_name, dataset_path in datasets.items():
-            try:
-                dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
-                
-                # skips very small datasets to ensure that the dataset is large enough for training
-                if len(dataset) < 10:
-                    print(f"Skipping {dataset_name} - too small ({len(dataset)} samples)")
+        # all global seeds
+        random.seed(cnn_seed)
+        np.random.seed(cnn_seed)
+        torch.manual_seed(cnn_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(cnn_seed)
+
+        # 100 configurations
+        for config_idx in range(100):
+            sampled_config = dict(config_space.sample_configuration())
+            sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
+
+            for dataset_name, dataset_path in datasets.items():
+                try:
+                    dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
+                    
+                    # skips very small datasets to ensure that the dataset is large enough for training
+                    if len(dataset) < 10:
+                        print(f"Skipping {dataset_name} - too small ({len(dataset)} samples)")
+                        continue
+                    
+                    val_size = max(1, int(0.2 * len(dataset)))  # ensures at at least 1 sample is in the validation set
+                    train_size = len(dataset) - val_size
+                    
+                    # randomly splits the dataset into training and validation sets
+                    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
+
+                    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=min(4, os.cpu_count()), persistent_workers=True)
+                    
+                    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=min(4, os.cpu_count()),persistent_workers=True)
+
+                    model = build_cnn(sampled_config, input_shape, num_classes)
+
+                    metrics = {
+                        "hyperparameters": sampled_config,
+                        "dataset_stats": {
+                            "name": dataset_name,
+                            "train_size": len(train_dataset),
+                            "val_size": len(val_dataset),
+                            "input_shape": input_shape,
+                            "num_classes": num_classes
+                        },
+                        "epochs": [],
+                        "train_loss": [],
+                        "val_loss": [],
+                        "train_accuracy": [],
+                        "val_accuracy": []
+                    }
+
+                    if torch.cuda.is_available():
+                        accelerator = "gpu"
+                        print("Using CUDA backend")
+                    elif torch.backends.mps.is_available():
+                        accelerator = "mps"
+                        print("Using MPS backend")
+                    else:
+                        accelerator = "cpu"
+                        print("Using CPU")
+
+                    early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
+                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], log_every_n_steps=1)
+
+                    print(f"[{dataset_name}] Train size: {len(train_dataset)}, Validation size: {len(val_dataset)}")
+
+                    trainer.fit(model, train_loader, val_loader)
+                    metrics["epochs"] = trainer.current_epoch
+                    save_results("CNN", dataset_name, config_idx, metrics, cnn_seed)
+
+                except Exception as e:
+                    print(f"Failed for {dataset_name} config {config_idx}: {e}")
                     continue
-                
-                val_size = max(1, int(0.2 * len(dataset)))  # ensures at at least 1 sample is in the validation set
-                train_size = len(dataset) - val_size
-                
-                # randomly splits the dataset into training and validation sets
-                train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=torch.Generator().manual_seed(42))
-
-                train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=min(4, os.cpu_count()), persistent_workers=True)
-                
-                val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=min(4, os.cpu_count()),persistent_workers=True)
-
-                model = build_cnn(sampled_config, input_shape, num_classes)
-
-                metrics = {
-                    "hyperparameters": sampled_config,
-                    "dataset_stats": {
-                        "name": dataset_name,
-                        "train_size": len(train_dataset),
-                        "val_size": len(val_dataset),
-                        "input_shape": input_shape,
-                        "num_classes": num_classes
-                    },
-                    "epochs": [],
-                    "train_loss": [],
-                    "val_loss": [],
-                    "train_accuracy": [],
-                    "val_accuracy": []
-                }
-
-                if torch.cuda.is_available():
-                    accelerator = "gpu"
-                    print("Using CUDA backend")
-                elif torch.backends.mps.is_available():
-                    accelerator = "mps"
-                    print("Using MPS backend")
-                else:
-                    accelerator = "cpu"
-                    print("Using CPU")
-
-                early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
-                trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], log_every_n_steps=1)
-
-                print(f"[{dataset_name}] Train size: {len(train_dataset)}, Validation size: {len(val_dataset)}")
-
-                trainer.fit(model, train_loader, val_loader)
-                metrics["epochs"] = trainer.current_epoch
-                save_results("CNN", dataset_name, config_idx, metrics, cnn_seed)
-
-            except Exception as e:
-                print(f"Failed for {dataset_name} config {config_idx}: {e}")
-                continue
 
 if __name__ == "__main__":
     train_cnn()

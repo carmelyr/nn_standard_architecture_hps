@@ -329,7 +329,7 @@ class GRU(pl.LightningModule):
         classifier_input_size = hidden_size * (2 if config.get("bidirectional", False) else 1)
         
         # classifier of the GRU
-        self.classifier = nn.Sequential(nn.Linear(classifier_input_size, hidden_size), output_activation, nn.ReLU(), nn.Dropout(dropout), nn.Linear(hidden_size, output_size))
+        self.classifier = nn.Sequential(nn.LayerNorm(classifier_input_size), nn.Linear(classifier_input_size, hidden_size), output_activation, nn.Dropout(dropout), nn.Linear(hidden_size, output_size))
 
         # loss function
         self.loss_fn = nn.CrossEntropyLoss()
@@ -337,6 +337,26 @@ class GRU(pl.LightningModule):
         # optimizer parameters
         self.learning_rate = learning_rate
         self.weight_decay = weight_decay
+
+        self._init_weights()
+
+    def _init_weights(self):
+        for name, param in self.gru.named_parameters():
+            if 'weight_ih' in name:
+                nn.init.xavier_uniform_(param.data)
+            elif 'weight_hh' in name:
+                nn.init.orthogonal_(param.data)
+            elif 'bias' in name:
+                param.data.fill_(0)
+                # sets forget gate bias to 1
+                n = param.size(0)
+                param.data[(n // 3):(2 * n // 3)].fill_(1)  # GRU has 3 gates
+        
+        for m in self.classifier:
+            if isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
         x = x.float()
@@ -357,7 +377,8 @@ class GRU(pl.LightningModule):
         x, y = batch
         logits = self(x)
         loss = self.loss_fn(logits, y)
-        acc = (logits.argmax(dim=1) == y).float().mean()
+        preds = torch.argmax(logits, dim=1)
+        acc = (preds == y).float().mean()
         self.log("train_loss", loss, prog_bar=True)
         self.log("train_accuracy", acc, prog_bar=True)
         return loss
@@ -366,13 +387,25 @@ class GRU(pl.LightningModule):
         x, y = batch
         logits = self(x)
         loss = self.loss_fn(logits, y)
-        acc = (logits.argmax(dim=1) == y).float().mean()
+        preds = torch.argmax(logits, dim=1)
+        acc = (preds == y).float().mean()
         self.log("val_loss", loss, prog_bar=True)
         self.log("val_accuracy", acc, prog_bar=True)
 
     def configure_optimizers(self):
-        return torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
-
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate, weight_decay=self.weight_decay)
+        
+        # learning rate scheduler
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=5)
+        
+        return {
+            "optimizer": optimizer,
+            "lr_scheduler": {
+                "scheduler": scheduler,
+                "monitor": "val_loss"
+            }
+        }
+    
 # ---- GRU builder function ---- #
 def build_gru(config: dict, input_shape: tuple, output_size: int):
     return GRU(config, input_shape, output_size)

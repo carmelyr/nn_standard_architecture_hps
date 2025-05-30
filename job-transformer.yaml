@@ -46,7 +46,7 @@ spec:
             cp log_transformer_$POD_ID.txt /abyss/home/logs/ &&
             echo "Contents of results/Transformer:" &&
             ls -lh /workspace/nn_standard_architecture_hps/results/Transformer/ &&
-            cp -v /workspace/nn_standard_architecture_hps/results/Transformer/* /abyss/home/results/transformer/$POD_ID/ &&
+            cp -vr /workspace/nn_standard_architecture_hps/results/Transformer/* /abyss/home/results/transformer/$POD_ID/ &&
             echo "Copied files to /abyss/home/results/transformer/$POD_ID:" &&
             ls -lh /abyss/home/results/transformer/$POD_ID/
         env:

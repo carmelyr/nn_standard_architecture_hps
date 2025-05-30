@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 import time
+import random
 from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
 from config_spaces import get_fcnn_config_space, fcnn_seed
@@ -168,63 +169,74 @@ def save_results(arch_name, dataset_name, config_idx, metrics, fcnn_seed):
 
 # this function trains the FCNN model on the datasets
 def train_fcnn():
+    seeds = [1, 2, 3, 4, 5]
     config_space = get_fcnn_config_space()
 
-    # 100 configurations
-    for config_idx in range(100):
-        sampled_config = dict(config_space.sample_configuration())
-        sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
+    for fcnn_seed in seeds:
+        print(f"\n=== Running for SEED {fcnn_seed} ===")
 
-        for dataset_name, dataset_path in datasets.items():
-            try:
-                dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
-                
-                val_size = int(0.2 * len(dataset))
-                train_size = len(dataset) - val_size
-                train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
+        # all global seeds
+        random.seed(fcnn_seed)
+        np.random.seed(fcnn_seed)
+        torch.manual_seed(fcnn_seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(fcnn_seed)
 
-                train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-                val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
+        # 100 configurations
+        for config_idx in range(100):
+            sampled_config = dict(config_space.sample_configuration())
+            sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
 
-                flat_input_size = int(np.prod(input_shape))
-                model = build_fcnn(sampled_config, flat_input_size, num_classes)
+            for dataset_name, dataset_path in datasets.items():
+                try:
+                    dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
+                    
+                    val_size = int(0.2 * len(dataset))
+                    train_size = len(dataset) - val_size
+                    train_dataset, val_dataset = torch.utils.data.random_split(dataset, [train_size, val_size])
 
-                metrics = {
-                    "hyperparameters": sampled_config,
-                    "dataset_stats": {
-                        "name": dataset_name,
-                        "train_size": len(train_dataset),
-                        "val_size": len(val_dataset),
-                        "input_shape": input_shape,
-                        "num_classes": num_classes
-                    },
-                    "epochs": [],
-                    "train_loss": [],
-                    "val_loss": [],
-                    "train_accuracy": [],
-                    "val_accuracy": []
-                }
+                    train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+                    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
 
-                if torch.cuda.is_available():
-                    accelerator = "gpu"
-                    print("Using CUDA backend")
-                elif torch.backends.mps.is_available():
-                    accelerator = "mps"
-                    print("Using MPS backend")
-                else:
-                    accelerator = "cpu"
-                    print("Using CPU")
+                    flat_input_size = int(np.prod(input_shape))
+                    model = build_fcnn(sampled_config, flat_input_size, num_classes)
 
-                early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
-                trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping])
+                    metrics = {
+                        "hyperparameters": sampled_config,
+                        "dataset_stats": {
+                            "name": dataset_name,
+                            "train_size": len(train_dataset),
+                            "val_size": len(val_dataset),
+                            "input_shape": input_shape,
+                            "num_classes": num_classes
+                        },
+                        "epochs": [],
+                        "train_loss": [],
+                        "val_loss": [],
+                        "train_accuracy": [],
+                        "val_accuracy": []
+                    }
 
-                trainer.fit(model, train_loader, val_loader)
-                metrics["epochs"] = trainer.current_epoch
-                save_results("FCNN", dataset_name, config_idx, metrics, fcnn_seed)
+                    if torch.cuda.is_available():
+                        accelerator = "gpu"
+                        print("Using CUDA backend")
+                    elif torch.backends.mps.is_available():
+                        accelerator = "mps"
+                        print("Using MPS backend")
+                    else:
+                        accelerator = "cpu"
+                        print("Using CPU")
 
-            except Exception as e:
-                print(f"Failed for {dataset_name} config {config_idx}: {e}")
-                continue
+                    early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
+                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping])
+
+                    trainer.fit(model, train_loader, val_loader)
+                    metrics["epochs"] = trainer.current_epoch
+                    save_results("FCNN", dataset_name, config_idx, metrics, fcnn_seed)
+
+                except Exception as e:
+                    print(f"Failed for {dataset_name} config {config_idx}: {e}")
+                    continue
 
 if __name__ == "__main__":
     train_fcnn()

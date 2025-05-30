@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: carmely-nn-standard-hps-job-cnn
+  name: carmely-nn-standard-hps-job-transformer-2
   namespace: user-carmely-reiska
 spec:
   completions: 1
@@ -38,17 +38,17 @@ spec:
           - >-
             set -euxo pipefail &&
             export POD_ID=${RUN_ID##*-} &&
-            mkdir -p /abyss/home/results/cnn/$POD_ID &&
+            mkdir -p /abyss/home/results/transformer/$POD_ID &&
             cd && cd .. && cd workspace &&
             cp -r /abyss/home/nn_standard_architecture_hps . &&
             cd nn_standard_architecture_hps &&
-            python train_cnn.py &> log_cnn_$POD_ID.txt &&
-            cp log_cnn_$POD_ID.txt /abyss/home/logs/ &&
-            echo "Contents of results/CNN:" &&
-            ls -lh /workspace/nn_standard_architecture_hps/results/CNN/ &&
-            cp -vr /workspace/nn_standard_architecture_hps/results/CNN/* /abyss/home/results/cnn/$POD_ID/ &&
-            echo "Copied files to /abyss/home/results/cnn/$POD_ID:" &&
-            ls -lh /abyss/home/results/cnn/$POD_ID/
+            python train_transformer.py &> log_transformer_$POD_ID.txt &&
+            cp log_transformer_$POD_ID.txt /abyss/home/logs/ &&
+            echo "Contents of results/Transformer:" &&
+            ls -lh /workspace/nn_standard_architecture_hps/results/Transformer/ &&
+            cp -vr /workspace/nn_standard_architecture_hps/results/Transformer/* /abyss/home/results/transformer/$POD_ID/ &&
+            echo "Copied files to /abyss/home/results/transformer/$POD_ID:" &&
+            ls -lh /abyss/home/results/transformer/$POD_ID/
         env:
           - name: RUN_ID
             valueFrom:

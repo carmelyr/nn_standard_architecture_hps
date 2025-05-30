@@ -46,7 +46,7 @@ spec:
             cp log_lstm_$POD_ID.txt /abyss/home/logs/ &&
             echo "Contents of results/LSTM:" &&
             ls -lh /workspace/nn_standard_architecture_hps/results/LSTM/ &&
-            cp -v /workspace/nn_standard_architecture_hps/results/LSTM/* /abyss/home/results/lstm/$POD_ID/ &&
+            cp -vr /workspace/nn_standard_architecture_hps/results/LSTM/* /abyss/home/results/lstm/$POD_ID/ &&
             echo "Copied files to /abyss/home/results/lstm/$POD_ID:" &&
             ls -lh /abyss/home/results/lstm/$POD_ID/
         env:

@@ -46,7 +46,7 @@ spec:
             cp log_fcnn_$POD_ID.txt /abyss/home/logs/ &&
             echo "Contents of results/FCNN:" &&
             ls -lh /workspace/nn_standard_architecture_hps/results/FCNN/ &&
-            cp -v /workspace/nn_standard_architecture_hps/results/FCNN/* /abyss/home/results/fcnn/$POD_ID/ &&
+            cp -vr /workspace/nn_standard_architecture_hps/results/FCNN/* /abyss/home/results/fcnn/$POD_ID/ &&
             echo "Copied files to /abyss/home/results/fcnn/$POD_ID:" &&
             ls -lh /abyss/home/results/fcnn/$POD_ID/
         env:

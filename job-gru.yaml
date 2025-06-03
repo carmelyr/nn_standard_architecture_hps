@@ -8,8 +8,10 @@ spec:
   parallelism: 1
   template:
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: belial
+      tolerations:
+        - key: "gpumem"
+          operator: "Exists"
+          effect: "NoSchedule"
       volumes:
         - name: cephfs-home
           hostPath:
@@ -28,11 +30,11 @@ spec:
           image: ccu-k8s.inf.uni-konstanz.de:32250/carmely.reiska/nn-standard-hps:latest
           resources:
             requests:
-              memory: "20Gi"
+              memory: "30Gi"
               cpu: "4"
               nvidia.com/gpu: "1"
             limits:
-              memory: "40Gi"
+              memory: "60Gi"
               cpu: "8"
               nvidia.com/gpu: "1"
           volumeMounts:
@@ -58,8 +60,7 @@ spec:
               cd && cd .. && cd workspace &&
               cp -r /abyss/home/nn_standard_architecture_hps . &&
               cd nn_standard_architecture_hps &&
-              python train_gru.py &> log_gru_$POD_ID.txt &&
-              cp log_gru_$POD_ID.txt /abyss/home/logs/ &&
+              python train_gru.py &&
               echo "Contents of results/GRU:" &&
               ls -lh /workspace/nn_standard_architecture_hps/results/GRU/ &&
               cp -vr /workspace/nn_standard_architecture_hps/results/GRU/* /abyss/home/results/gru/$POD_ID/ &&

@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 import time
+import shutil
 import random
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
@@ -148,10 +149,14 @@ def save_results(arch_name, dataset_name, config_idx, metrics, cnn_seed):
 # - samples configurations from the config space and trains the model on each dataset
 # - handles the splitting of the dataset into training and validation sets
 def train_cnn():
-    seeds = [1, 2, 3, 4, 5]
+    seeds = [5]
     config_space = get_cnn_config_space()
 
     for cnn_seed in seeds:
+        if os.path.exists('lightning_logs'):
+            shutil.rmtree('lightning_logs')
+        if os.path.exists('__pycache__'):
+            shutil.rmtree('__pycache__')
         print(f"\n=== Running for SEED {cnn_seed} ===")
 
         # all global seeds
@@ -214,13 +219,23 @@ def train_cnn():
                         print("Using CPU")
 
                     early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
-                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], log_every_n_steps=1)
+                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, enable_checkpointing=False, logger=False, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], log_every_n_steps=1)
 
-                    print(f"[{dataset_name}] Train size: {len(train_dataset)}, Validation size: {len(val_dataset)}")
+                    try:
+                        trainer.fit(model, train_loader, val_loader)
+                        metrics["epochs"] = trainer.current_epoch
+                        save_results("CNN", dataset_name, config_idx, metrics, cnn_seed)
 
-                    trainer.fit(model, train_loader, val_loader)
-                    metrics["epochs"] = trainer.current_epoch
-                    save_results("CNN", dataset_name, config_idx, metrics, cnn_seed)
+                        # cleans up after success
+                        torch.cuda.empty_cache()
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+
+                    except Exception as e:
+                        print(f"Failed for {dataset_name} config {config_idx} seed {cnn_seed}: {e}")
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+                        continue
 
                 except Exception as e:
                     print(f"Failed for {dataset_name} config {config_idx}: {e}")

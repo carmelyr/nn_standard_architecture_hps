@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 import time
 import random
+import shutil
 from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
 from config_spaces import get_fcnn_config_space, fcnn_seed
@@ -169,10 +170,14 @@ def save_results(arch_name, dataset_name, config_idx, metrics, fcnn_seed):
 
 # this function trains the FCNN model on the datasets
 def train_fcnn():
-    seeds = [1, 2, 3, 4, 5]
+    seeds = [5]
     config_space = get_fcnn_config_space()
 
     for fcnn_seed in seeds:
+        if os.path.exists('lightning_logs'):
+            shutil.rmtree('lightning_logs')
+        if os.path.exists('__pycache__'):
+            shutil.rmtree('__pycache__')
         print(f"\n=== Running for SEED {fcnn_seed} ===")
 
         # all global seeds
@@ -228,11 +233,23 @@ def train_fcnn():
                         print("Using CPU")
 
                     early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
-                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping])
+                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, enable_checkpointing=False, logger=False, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping])
 
-                    trainer.fit(model, train_loader, val_loader)
-                    metrics["epochs"] = trainer.current_epoch
-                    save_results("FCNN", dataset_name, config_idx, metrics, fcnn_seed)
+                    try:
+                        trainer.fit(model, train_loader, val_loader)
+                        metrics["epochs"] = trainer.current_epoch
+                        save_results("FCNN", dataset_name, config_idx, metrics, fcnn_seed)
+
+                        # cleans up after success
+                        torch.cuda.empty_cache()
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+
+                    except Exception as e:
+                        print(f"Failed for {dataset_name} config {config_idx} seed {fcnn_seed}: {e}")
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+                        continue
 
                 except Exception as e:
                     print(f"Failed for {dataset_name} config {config_idx}: {e}")

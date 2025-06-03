@@ -5,11 +5,15 @@ import pandas as pd
 import torch
 import time
 import random
+import shutil
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
 from config_spaces import get_gru_config_space, gru_seed
 from model_builder import build_gru
 from pytorch_lightning.callbacks import EarlyStopping
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Using device: {device}")
 
 datasets = {
     "classification_ozone": "datasets/classification_ozone/X_train.csv",
@@ -139,10 +143,14 @@ def save_results(arch_name, dataset_name, config_idx, metrics, gru_seed):
 
 # this function is used to train the GRU model
 def train_gru():
-    seeds = [1, 2, 3, 4, 5]
+    seeds = [5]
     config_space = get_gru_config_space()
 
     for gru_seed in seeds:
+        if os.path.exists('lightning_logs'):
+            shutil.rmtree('lightning_logs')
+        if os.path.exists('__pycache__'):
+            shutil.rmtree('__pycache__')
         print(f"\n=== Running for SEED {gru_seed} ===")
 
         # all global seeds
@@ -169,7 +177,7 @@ def train_gru():
                     train_size = len(dataset) - val_size
                     train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
 
-                    batch_size = min(32, len(train_dataset) // 2)
+                    batch_size = 32
                     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=4)
                     val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False, num_workers=4)
 
@@ -202,11 +210,23 @@ def train_gru():
                         print("Using CPU")
 
                     early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min", min_delta=0.001)
-                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], log_every_n_steps=1, gradient_clip_val=0.5, accumulate_grad_batches=2)
+                    trainer = pl.Trainer(accelerator=accelerator, devices=1, max_epochs=1024, enable_checkpointing=False, logger=False, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], log_every_n_steps=1, gradient_clip_val=0.5, accumulate_grad_batches=2)
 
-                    trainer.fit(model, train_loader, val_loader)
-                    metrics["epochs"] = trainer.current_epoch
-                    save_results("GRU", dataset_name, config_idx, metrics, gru_seed)
+                    try:
+                        trainer.fit(model, train_loader, val_loader)
+                        metrics["epochs"] = trainer.current_epoch
+                        save_results("GRU", dataset_name, config_idx, metrics, gru_seed)
+
+                        # cleans up after success
+                        torch.cuda.empty_cache()
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+
+                    except Exception as e:
+                        print(f"Failed for {dataset_name} config {config_idx} seed {gru_seed}: {e}")
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+                        continue
 
                 except Exception as e:
                     print(f"Failed for {dataset_name} config {config_idx}: {str(e)}")

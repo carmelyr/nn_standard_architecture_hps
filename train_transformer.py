@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 import time
+import shutil
 import random
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
@@ -133,10 +134,14 @@ def save_results(arch_name, dataset_name, config_idx, metrics, transformer_seed)
 
 # this method is used to train the transformer model
 def train_transformer():
-    seeds = [1, 2, 3, 4, 5]
+    seeds = [5]
     config_space = get_transformer_config_space()
 
     for transformer_seed in seeds:
+        if os.path.exists('lightning_logs'):
+            shutil.rmtree('lightning_logs')
+        if os.path.exists('__pycache__'):
+            shutil.rmtree('__pycache__')
         print(f"\n=== Running for SEED {transformer_seed} ===")
 
         # all global seeds
@@ -204,14 +209,23 @@ def train_transformer():
                         print("Using CPU")
 
                     early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min", min_delta=0.001)
-                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], gradient_clip_val=1.0, gradient_clip_algorithm="norm", accumulate_grad_batches=1, log_every_n_steps=1)
+                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, enable_checkpointing=False, logger=False, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], gradient_clip_val=1.0, gradient_clip_algorithm="norm", accumulate_grad_batches=1, log_every_n_steps=1)
 
-                    print(f"[{dataset_name}] Train size: {len(train_dataset)}, Val size: {len(val_dataset)}")
-                    print(f"Transformer config: {sampled_config}")
+                    try:
+                        trainer.fit(model, train_loader, val_loader)
+                        metrics["epochs"] = trainer.current_epoch
+                        save_results("Transformer", dataset_name, config_idx, metrics, transformer_seed)
 
-                    trainer.fit(model, train_loader, val_loader)
-                    metrics["epochs"] = trainer.current_epoch
-                    save_results("Transformer", dataset_name, config_idx, metrics, transformer_seed)
+                        # cleans up after success
+                        torch.cuda.empty_cache()
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+
+                    except Exception as e:
+                        print(f"Failed for {dataset_name} config {config_idx} seed {transformer_seed}: {e}")
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+                        continue
 
                 except Exception as e:
                     print(f"Failed for {dataset_name} config {config_idx}: {e}")

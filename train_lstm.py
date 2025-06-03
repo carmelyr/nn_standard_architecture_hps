@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 import time
+import shutil
 import random
 from torch.utils.data import DataLoader, TensorDataset, random_split
 import pytorch_lightning as pl
@@ -129,10 +130,14 @@ def save_results(arch_name, dataset_name, config_idx, metrics, lstm_seed):
 
 # this method trains the LSTM model
 def train_lstm():
-    seeds = [1, 2, 3, 4, 5]
+    seeds = [5]
     config_space = get_lstm_config_space()
 
     for lstm_seed in seeds:
+        if os.path.exists('lightning_logs'):
+            shutil.rmtree('lightning_logs')
+        if os.path.exists('__pycache__'):
+            shutil.rmtree('__pycache__')
         print(f"\n=== Running for SEED {lstm_seed} ===")
 
         # all global seeds
@@ -196,13 +201,23 @@ def train_lstm():
 
 
                     early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
-                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], gradient_clip_val=1.0, accumulate_grad_batches=2, log_every_n_steps=1)
+                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, enable_checkpointing=False, logger=False, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping], gradient_clip_val=1.0, accumulate_grad_batches=2, log_every_n_steps=1)
 
-                    print(f"[{dataset_name}] Train size: {len(train_dataset)}, Val size: {len(val_dataset)}")
+                    try:
+                        trainer.fit(model, train_loader, val_loader)
+                        metrics["epochs"] = trainer.current_epoch
+                        save_results("LSTM", dataset_name, config_idx, metrics, lstm_seed)
 
-                    trainer.fit(model, train_loader, val_loader)
-                    metrics["epochs"] = trainer.current_epoch
-                    save_results("LSTM", dataset_name, config_idx, metrics, lstm_seed)
+                        # cleans up after success
+                        torch.cuda.empty_cache()
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+
+                    except Exception as e:
+                        print(f"Failed for {dataset_name} config {config_idx} seed {lstm_seed}: {e}")
+                        shutil.rmtree("lightning_logs", ignore_errors=True)
+                        shutil.rmtree("__pycache__", ignore_errors=True)
+                        continue
 
                 except Exception as e:
                     print(f"Failed for {dataset_name} config {config_idx}: {e}")

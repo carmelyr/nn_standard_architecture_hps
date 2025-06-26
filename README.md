@@ -42,5 +42,5 @@ The project uses datasets from the [UCR Time Series Classification Archive](http
 16. FaultDetectionB
 18. FiftyWords
 19. HouseTwenty
-20. KeplerLightCurves
-21. RightWhaleCalls
+20. RightWhaleCalls
+21. KeplerLightCurves

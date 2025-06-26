@@ -25,21 +25,22 @@ For each architecture:
 The project uses datasets from the [UCR Time Series Classification Archive](https://www.timeseriesclassification.com):
 
 1. classification_ozone (custom dataset, not included in the website)
-2. Adiac
-3. ArrowHead
-4. Beef
-5. BeetleFly
-6. BinaryHeartbeat
-7. BirdChicken
-8. Car
-9. CatsDogs
-10. CBF
-11. ChlorineConcentration
-12. CinCECGTorso
-13. CounterMovementJump
-14. DucksAndGeese
-15. EigenWorms
-16. FaultDetectionB
+2. AbnormalHeartbeat
+3. Adiac
+4. ArrowHead
+5. Beef
+6. BeetleFly
+7. BinaryHeartbeat
+8. BirdChicken
+9. Car
+10. CatsDogs
+11. CBF
+12. ChlorineConcentration
+13. CinCECGTorso
+14. CounterMovementJump
+15. DucksAndGeese
+16. EigenWorms
+17. FaultDetectionB
 18. FiftyWords
 19. HouseTwenty
 20. RightWhaleCalls

@@ -3,7 +3,7 @@
 [Time Series Classification Datasets](https://www.timeseriesclassification.com/dataset.php)
 [ConfigSpace](https://github.com/automl/ConfigSpace/)
 
-This project benchmarks five neural network architectures on multiple time series classification datasets. It produces different hyperparameter configurations for each architecture.
+This project benchmarks five neural network architectures on multiple time series classification datasets. It produces 100 different hyperparameter configurations for each dataset and architecture.
 
 ## Overview
 
@@ -16,8 +16,8 @@ Five standard neural network architectures:
 
 For each architecture:
 - defines a configuration space of hyperparameters
-- randomly samples 5 different configurations
-- trains and validates each configuration on all datasets
+- randomly samples 100 different configurations
+- trains and validates each configuration on all datasets using 5 folds
 - saves comprehensive results to JSON files
 
 ## Datasets
@@ -29,9 +29,18 @@ The project uses datasets from the [UCR Time Series Classification Archive](http
 3. ArrowHead
 4. Beef
 5. BeetleFly
-6. BirdChicken
-7. Car
-8. CBF
-9. ChlorineConcentration
-10. CinCECGTorso
-11. FiftyWords
+6. BinaryHeartbeat
+7. BirdChicken
+8. Car
+9. CatsDogs
+10. CBF
+11. ChlorineConcentration
+12. CinCECGTorso
+13. CounterMovementJump
+14. DucksAndGeese
+15. EigenWorms
+16. FaultDetectionB
+18. FiftyWords
+19. HouseTwenty
+20. KeplerLightCurves
+21. RightWhaleCalls

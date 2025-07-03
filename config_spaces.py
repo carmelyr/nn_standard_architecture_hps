@@ -2,11 +2,11 @@
 
 from ConfigSpace import ConfigurationSpace, Integer, Float, Categorical
 
-fcnn_seed = 5
+fcnn_seed = 1
 cnn_seed = 1
-lstm_seed = 5
-gru_seed = 3
-transformer_seed = 6
+lstm_seed = 1
+gru_seed = 1
+transformer_seed = 1
 
 #---- FCNN ----#
 def get_fcnn_config_space(seed=fcnn_seed):

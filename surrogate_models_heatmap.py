@@ -39,6 +39,10 @@ def generate_pairwise_summary_heatmaps(combined_df):
         for metric in metrics:
             pivot = df_model.pivot(index="Dataset", columns="Regressor", values=metric)
 
+            # clips the values to a reasonable range for visualization
+            if metric == "R2":
+                pivot = pivot.clip(lower=-1, upper=1)
+
             if pivot.isnull().any().any():
                 continue
 
@@ -99,6 +103,10 @@ def generate_dataset_pairwise_heatmaps(combined_df):
                         try:
                             val_a = df_dataset[df_dataset['Regressor'] == reg_a][metric].values[0]
                             val_b = df_dataset[df_dataset['Regressor'] == reg_b][metric].values[0]
+
+                            if metric == "R2":
+                                val_a = max(min(val_a, 1), -1)
+                                val_b = max(min(val_b, 1), -1)
 
                             if metric in ["RMSE", "MAE"]:
                                 diff = val_b - val_a        # lower RMSE/MAE is better

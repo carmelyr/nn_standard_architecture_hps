@@ -1,3 +1,6 @@
+# Heatmap for all models and datasets
+# This script loads results from a directory structure and generates a heatmap
+
 import os
 import json
 import pandas as pd
@@ -60,7 +63,7 @@ def generate_heatmap(df, metric="max_val_accuracy"):
     pivot = df.groupby(["dataset", "classifier"])[metric].max().unstack()
     #pivot = df.groupby(["dataset", "classifier"])[metric].mean().unstack()
 
-    plt.figure(figsize=(12, len(pivot) * 0.7))
+    plt.figure(figsize=(12, len(pivot) * 0.4))
     sns.heatmap(pivot, annot=True, fmt=".2f", cmap="RdPu", vmin=0, vmax=1)
     plt.title(f"Validation Accuracy Heatmap ({metric})")
     plt.xlabel("Classifier")

@@ -7,6 +7,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.impute import SimpleImputer
+from sklearn.metrics import mean_absolute_error
 
 RESULTS_FILE = "linear_regression_results.csv"
 
@@ -14,7 +15,7 @@ RESULTS_FILE = "linear_regression_results.csv"
 if not os.path.exists(RESULTS_FILE):
     with open(RESULTS_FILE, mode="w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(["Model", "Dataset", "R2", "RMSE"])
+        writer.writerow(["Model", "Dataset", "Regressor", "R2", "RMSE", "MAE"])
 
 # this function processes each CSV file from the surrogate_datasets directory
 def process_csv(csv_path, model_name, dataset_name):
@@ -22,16 +23,26 @@ def process_csv(csv_path, model_name, dataset_name):
 
     try:
         df = pd.read_csv(csv_path)
+        if len(df) < 5:
+            print(f"Not enough total rows in {csv_path}. Skipping.")
+            return
     except Exception as e:
         print(f"Failed to read {csv_path}: {e}")
         return
 
-    if "epoch_20" not in df.columns:
-        print(f"No 'epoch_20' column in {csv_path}. Skipping.")
+
+    if "val_acc_20" not in df.columns:
+        print(f"'val_acc_20' missing in {csv_path}. Skipping.")
         return
-    
-    X = df.drop(columns=["epoch_20"])
-    y = df["epoch_20"].dropna()
+
+    hp_cols = [col for col in df.columns if col not in ["dataset"] and col.startswith(("dropout", "learning_rate", "num_", "activation", "kernel", "pooling", "bidirectional", "weight_decay", "ff_dim"))]
+    if not hp_cols:
+        print(f"No hyperparameter columns in {csv_path}. Skipping.")
+        return
+
+    X = df[hp_cols]
+    y = df["val_acc_20"].dropna()
+
     X = X.loc[y.index]
 
     print(f"Total rows in CSV: {len(df)}")
@@ -48,7 +59,7 @@ def process_csv(csv_path, model_name, dataset_name):
         print("Not enough samples after cleaning. Skipping.")
         return
 
-    # Train/test split of ratio 80/20
+    # train-test split with 80% training and 20% testing
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     # train model using linear regression
@@ -59,13 +70,14 @@ def process_csv(csv_path, model_name, dataset_name):
     # calculates R² and RMSE
     r2 = r2_score(y_test, y_pred)
     rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+    mae = mean_absolute_error(y_test, y_pred)
 
     # logs results
     with open(RESULTS_FILE, mode="a", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([model_name, dataset_name, round(r2, 4), round(rmse, 4)])
+        writer.writerow([model_name, dataset_name, "LinearRegression", round(r2, 4), round(rmse, 4), round(mae, 4)])
 
-    print(f"R²: {r2:.4f}, RMSE: {rmse:.4f}")
+    print(f"R²: {r2:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}")
 
     # regression fit line
     fit_model = LinearRegression()

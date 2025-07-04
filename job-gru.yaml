@@ -1,60 +1,23 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
+  annotations: {}
   name: carmely-nn-standard-hps-job-gru
   namespace: user-carmely-reiska
 spec:
+  backoffLimit: 10
   completions: 1
   parallelism: 1
   template:
     spec:
-      tolerations:
-        - key: "gpumem"
-          operator: "Exists"
-          effect: "NoSchedule"
-      volumes:
-        - name: cephfs-home
-          hostPath:
-            path: "/cephfs/abyss/home/carmely-reiska"
-        - name: cephfs-shared
-          hostPath:
-            path: "/cephfs/abyss/shared"
-        - name: cephfs-datasets
-          hostPath:
-            path: "/cephfs/abyss/datasets"
-        - name: dshm
-          emptyDir:
-            medium: Memory
       containers:
         - name: carmely-nn-standard-hps-container
           image: ccu-k8s.inf.uni-konstanz.de:32250/carmely.reiska/nn-standard-hps:latest
-          resources:
-            requests:
-              memory: "30Gi"
-              cpu: "4"
-              nvidia.com/gpu: "1"
-            limits:
-              memory: "60Gi"
-              cpu: "8"
-              nvidia.com/gpu: "1"
-          volumeMounts:
-            - mountPath: /abyss/home
-              name: cephfs-home
-              readOnly: false
-            - mountPath: /abyss/shared
-              name: cephfs-shared
-              readOnly: false
-            - mountPath: /abyss/datasets
-              name: cephfs-datasets
-              readOnly: true
-            - mountPath: /dev/shm
-              name: dshm
           command: ["/bin/bash"]
           args:
             - -c
-            - >-
+            - >
               set -euxo pipefail &&
-              export TMPDIR=/abyss/home/tmp &&
               export POD_ID=${RUN_ID##*-} &&
               mkdir -p /abyss/home/results/gru/$POD_ID &&
               cd && cd .. && cd workspace &&
@@ -71,8 +34,38 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.name
+          resources:
+            requests:
+              memory: "40Gi"
+              cpu: "4"
+              nvidia.com/gpu: "1"
+            limits:
+              memory: "60Gi"
+              cpu: "8"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - mountPath: /abyss/home
+              name: cephfs-home
+              readOnly: false
+            - mountPath: /abyss/shared
+              name: cephfs-shared
+              readOnly: false
+            - mountPath: /abyss/datasets
+              name: cephfs-datasets
+              readOnly: true
       imagePullSecrets:
         - name: registry-ro-login
+      nodeSelector:
+        kubernetes.io/hostname: belial
       restartPolicy: Never
-  backoffLimit: 10
+      volumes:
+        - name: cephfs-home
+          hostPath:
+            path: /cephfs/abyss/home/carmely-reiska
+        - name: cephfs-shared
+          hostPath:
+            path: /cephfs/abyss/shared
+        - name: cephfs-datasets
+          hostPath:
+            path: /cephfs/abyss/datasets
 

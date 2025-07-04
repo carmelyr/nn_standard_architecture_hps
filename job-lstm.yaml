@@ -1,74 +1,71 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
+  annotations: {}
   name: carmely-nn-standard-hps-job-lstm
   namespace: user-carmely-reiska
 spec:
+  backoffLimit: 10
   completions: 1
   parallelism: 1
   template:
     spec:
-      nodeSelector:
-        kubernetes.io/hostname: demogorgon
-      tolerations: 
-        - key: "gpumem"              
-          operator: "Exists"
-          effect: "NoSchedule"
       containers:
-      - name: carmely-nn-standard-hps-container
-        image: ccu-k8s.inf.uni-konstanz.de:32250/carmely.reiska/nn-standard-hps:latest
-        resources:
-          requests:
-            memory: "30Gi"
-            cpu: "4"
-            nvidia.com/gpu: "1"
-          limits:
-            memory: "60Gi"
-            cpu: "8"
-            nvidia.com/gpu: "1"
-        volumeMounts:
-          - mountPath: /abyss/home
-            name: cephfs-home
-            readOnly: false
-          - mountPath: /abyss/shared
-            name: cephfs-shared
-            readOnly: false
-          - mountPath: /abyss/datasets
-            name: cephfs-datasets
-            readOnly: true
-        command: ["/bin/bash"]
-        args:
-          - -c
-          - >-
-            set -euxo pipefail &&
-            export POD_ID=${RUN_ID##*-} &&
-            mkdir -p /abyss/home/results/lstm/$POD_ID &&
-            cd && cd .. && cd workspace &&
-            cp -r /abyss/home/nn_standard_architecture_hps . &&
-            cd nn_standard_architecture_hps &&
-            python train_lstm.py &&
-            echo "Contents of results/LSTM:" &&
-            ls -lh /workspace/nn_standard_architecture_hps/results/LSTM/ &&
-            cp -vr /workspace/nn_standard_architecture_hps/results/LSTM/* /abyss/home/results/lstm/$POD_ID/ &&
-            echo "Copied files to /abyss/home/results/lstm/$POD_ID:" &&
-            ls -lh /abyss/home/results/lstm/$POD_ID/
-        env:
-          - name: RUN_ID
-            valueFrom:
-              fieldRef:
-                fieldPath: metadata.name
+        - name: carmely-nn-standard-hps-container
+          image: ccu-k8s.inf.uni-konstanz.de:32250/carmely.reiska/nn-standard-hps:latest
+          command: ["/bin/bash"]
+          args:
+            - -c
+            - >
+              set -euxo pipefail &&
+              export POD_ID=${RUN_ID##*-} &&
+              mkdir -p /abyss/home/results/lstm/$POD_ID &&
+              cd && cd .. && cd workspace &&
+              cp -r /abyss/home/nn_standard_architecture_hps . &&
+              cd nn_standard_architecture_hps &&
+              python train_lstm.py &&
+              echo "Contents of results/LSTM:" &&
+              ls -lh /workspace/nn_standard_architecture_hps/results/LSTM/ &&
+              cp -vr /workspace/nn_standard_architecture_hps/results/LSTM/* /abyss/home/results/lstm/$POD_ID/ &&
+              echo "Copied files to /abyss/home/results/lstm/$POD_ID:" &&
+              ls -lh /abyss/home/results/lstm/$POD_ID/
+          env:
+            - name: RUN_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          resources:
+            requests:
+              memory: "40Gi"
+              cpu: "4"
+              nvidia.com/gpu: "1"
+            limits:
+              memory: "60Gi"
+              cpu: "8"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - mountPath: /abyss/home
+              name: cephfs-home
+              readOnly: false
+            - mountPath: /abyss/shared
+              name: cephfs-shared
+              readOnly: false
+            - mountPath: /abyss/datasets
+              name: cephfs-datasets
+              readOnly: true
+      imagePullSecrets:
+        - name: registry-ro-login
+      nodeSelector:
+        kubernetes.io/hostname: belial
+      restartPolicy: Never
       volumes:
         - name: cephfs-home
           hostPath:
-            path: "/cephfs/abyss/home/carmely-reiska"
+            path: /cephfs/abyss/home/carmely-reiska
         - name: cephfs-shared
           hostPath:
-            path: "/cephfs/abyss/shared"
+            path: /cephfs/abyss/shared
         - name: cephfs-datasets
           hostPath:
-            path: "/cephfs/abyss/datasets"
-      imagePullSecrets:
-        - name: registry-ro-login
-      restartPolicy: Never
-  backoffLimit: 10
+            path: /cephfs/abyss/datasets
 

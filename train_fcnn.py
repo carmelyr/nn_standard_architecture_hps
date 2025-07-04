@@ -21,10 +21,10 @@ datasets = {
     #"classification_ozone": "datasets/classification_ozone/X_train.csv",
     #"AbnormalHeartbeat": "datasets/AbnormalHeartbeat/AbnormalHeartbeat_TRAIN.txt",
     #"Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
-    "ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
+    #"ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
     #"Beef": "datasets/Beef/Beef_TRAIN.txt",
     #"BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
-    #"BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
+    "BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
     #"BinaryHeartbeat": "datasets/BinaryHeartbeat/BinaryHeartbeat_TRAIN.txt",
     #"Car": "datasets/Car/Car_TRAIN.txt",
     #"CBF": "datasets/CBF/CBF_TRAIN.txt",
@@ -302,15 +302,15 @@ def train_fcnn():
 
         # 100 configurations
         #for config_idx in range(100):
-        for config_idx in range(100):
+        for config_idx in range(4, 100):
             """sampled_config = dict(config_space.sample_configuration())
             sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}"""
 
             # Always try to load hyperparameters from seed2 for consistency
             config_id = config_idx + 1
             if fcnn_seed == 5:
-                config_file = f"ArrowHead_config_{config_id}_seed2.json"
-                config_path = os.path.join("results", "FCNN", "ArrowHead", f"config_{config_id}", config_file)
+                config_file = f"BirdChicken_config_{config_id}_seed2.json"
+                config_path = os.path.join("results", "FCNN", "BirdChicken", f"config_{config_id}", config_file)
                 
                 if os.path.exists(config_path):
                     with open(config_path, "r") as f:

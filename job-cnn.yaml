@@ -8,22 +8,8 @@ spec:
   parallelism: 1
   template:
     spec:
-      tolerations:
-        - key: "gpumem"
-          operator: "Exists"
-          effect: "NoSchedule"
-      affinity:
-        nodeAffinity:
-          preferredDuringSchedulingIgnoredDuringExecution:
-            - weight: 1
-              preference:
-                matchExpressions:
-                  - key: kubernetes.io/hostname
-                    operator: In
-                    values:
-                      - demogorgon
-                      - vecna
-                      - zariel
+      nodeSelector:
+        kubernetes.io/hostname: belial
       containers:
         - name: carmely-nn-standard-hps-container
           image: ccu-k8s.inf.uni-konstanz.de:32250/carmely.reiska/nn-standard-hps:latest

@@ -44,17 +44,29 @@ def extract_model_config(path, model, max_epoch=20):
 
     config = data.get("hyperparameters", {}).copy()
     dataset = data.get("dataset_stats", {}).get("name", "unknown")
-    
-    # skips if the model is not recognized
+
+    # skip if hyperparameter config is incomplete for the given model
     if not all(key in config for key in MODEL_KEYS[model]):
         return None
 
-    val_acc = data.get("val_accuracy", [])
+    # --- FIXED BLOCK: Get val_accuracy from fold_logs ---
+    fold_logs = data.get("fold_logs", [])
+    if not fold_logs or any("val_accuracy" not in f for f in fold_logs):
+        print(f"Missing val_accuracy in fold_logs: {path}")
+        return None
+
+    fold_acc = []
+    for fold in fold_logs:
+        acc_list = fold["val_accuracy"]
+        if len(acc_list) < max_epoch:
+            print(f"Skipping {path} — fold has only {len(acc_list)} epochs")
+            return None
+        fold_acc.append(acc_list[:max_epoch])
+
+    # average across folds
+    acc = pd.DataFrame(fold_acc).mean(axis=0).tolist()
     config_id = config_hash(config)
-    
-    # ensures that the validation accuracies are valid numbers
-    acc = [val_acc[i] if i < len(val_acc) else None for i in range(max_epoch)]
-    
+
     return dataset, config_id, config, acc
 
 # this method collects all JSON files from a directory and its subdirectories
@@ -113,7 +125,8 @@ def process_model_results(model, result_root, output_root, max_epoch=20):
         row = {k: v for k, v in entry["config"].items() if k in MODEL_KEYS[model]}
         row["dataset"] = dataset
         for i in range(max_epoch):
-            row[f"epoch_{i+1}"] = acc_avg[i]
+            row[f"val_acc_{i+1}"] = acc_avg[i]
+
 
         out_dir = os.path.join(output_root, dataset)
         os.makedirs(out_dir, exist_ok=True)
@@ -133,7 +146,8 @@ def process_model_results(model, result_root, output_root, max_epoch=20):
 
 def build_all_surrogate_datasets(max_epoch=20):
     models = ["FCNN", "CNN", "LSTM", "GRU", "Transformer"]
-    
+    #models = ["CNN"]
+
     for model in models:
         result_root = os.path.join("results", model)
         output_root = os.path.join("surrogate_datasets", model)

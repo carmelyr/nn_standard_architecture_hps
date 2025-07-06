@@ -5,47 +5,47 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 RESULTS_DIR = "results"
-
-# initializes the results directory
 models = sorted([d for d in os.listdir(RESULTS_DIR) if os.path.isdir(os.path.join(RESULTS_DIR, d))])
-datasets = set()
+datasets = sorted({ds for m in models for ds in os.listdir(os.path.join(RESULTS_DIR, m)) if ds != ".DS_Store"})
 
-for model in models:
-    model_dir = os.path.join(RESULTS_DIR, model)
-    for dataset in os.listdir(model_dir):
-        datasets.add(dataset)
-
-datasets = sorted(d for d in datasets if d != ".DS_Store")
-
-# creates a DataFrame to hold the availability of seeds
-# rows are datasets, columns are models
-availability = pd.DataFrame(0, index=datasets, columns=models)
-
+# initializes DataFrames for availability and annotations
+availability = pd.DataFrame(0.0, index=datasets, columns=models)
+annotations = pd.DataFrame("", index=datasets, columns=models)
 seed_pattern = re.compile(r"_seed(\d+)\.json$")
 
-# iterates through each model and dataset to check for completed seeds
 for model in models:
     for dataset in datasets:
         dataset_path = os.path.join(RESULTS_DIR, model, dataset)
         if not os.path.isdir(dataset_path):
             continue
 
-        seeds_found = set()
-        config_path = os.path.join(dataset_path, "config_100")
-        if os.path.isdir(config_path):
-            for fname in os.listdir(config_path):
+        config_1_path = os.path.join(dataset_path, "config_1")          # directory for configuration 1
+        config_100_path = os.path.join(dataset_path, "config_100")      # directory for configuration 100
+
+        count = 0
+        if os.path.isdir(config_100_path):
+            seeds_found = set()
+            # collects all seeds from config_100
+            for fname in os.listdir(config_100_path):
                 if fname.endswith(".json") and dataset in fname:
                     match = seed_pattern.search(fname)
                     if match:
                         seeds_found.add(int(match.group(1)))
+            count = min(len(seeds_found), 5)
+            availability.loc[dataset, model] = count
 
+            if os.path.isdir(config_1_path) and count < 5:
+                annotations.loc[dataset, model] = f"{count} (i)"
+            else:
+                annotations.loc[dataset, model] = str(count)
+        elif os.path.isdir(config_1_path):
+            availability.loc[dataset, model] = 0
+            annotations.loc[dataset, model] = "0 (i)"
 
-        availability.loc[dataset, model] = min(len(seeds_found), 5)
-
-# heatmap plot
 plt.figure(figsize=(12, len(datasets) * 0.25 + 1.5))
-sns.heatmap(availability, cmap="YlOrRd", annot=True, fmt="d", linewidths=0.5, cbar_kws={"label": "Number of Completed Seeds (Max = 5)"})
-plt.title("Heatmap of Seed Completion per Dataset and Model")
+sns.heatmap(availability, cmap="YlOrRd", annot=annotations, fmt="s", linewidths=0.5,
+            cbar_kws={"label": "Completed Seeds"})
+plt.title("Seed Completion Status per Dataset and Model\n(i) = In Progress (config_1 exists, config_100 not yet or incomplete)")
 plt.xlabel("Model")
 plt.ylabel("Dataset")
 plt.tight_layout()

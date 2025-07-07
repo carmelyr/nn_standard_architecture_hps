@@ -34,10 +34,21 @@ for model in models:
             count = min(len(seeds_found), 5)
             availability.loc[dataset, model] = count
 
-            if os.path.isdir(config_1_path) and count < 5:
-                annotations.loc[dataset, model] = f"{count} (i)"
+            if os.path.isdir(config_1_path):
+                seeds_in_1 = set()
+                for fname in os.listdir(config_1_path):
+                    if fname.endswith(".json") and dataset in fname:
+                        match = seed_pattern.search(fname)
+                        if match:
+                            seeds_in_1.add(int(match.group(1)))
+
+                if len(seeds_in_1) > len(seeds_found):
+                    annotations.loc[dataset, model] = f"{count} (i)"
+                else:
+                    annotations.loc[dataset, model] = str(count)
             else:
                 annotations.loc[dataset, model] = str(count)
+
         elif os.path.isdir(config_1_path):
             availability.loc[dataset, model] = 0
             annotations.loc[dataset, model] = "0 (i)"

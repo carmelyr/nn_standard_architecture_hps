@@ -21,7 +21,7 @@ datasets = {
     "AbnormalHeartbeat": "datasets/AbnormalHeartbeat/AbnormalHeartbeat_TRAIN.txt",
     "Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
     "ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
-    #"Beef": "datasets/Beef/Beef_TRAIN.txt",
+    "Beef": "datasets/Beef/Beef_TRAIN.txt",
     "BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
     "BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
     "BinaryHeartbeat": "datasets/BinaryHeartbeat/BinaryHeartbeat_TRAIN.txt",
@@ -234,7 +234,7 @@ def save_results(arch_name, dataset_name, config_idx, metrics, gru_seed):
 
 # this function is used to train the GRU model
 def train_gru():
-    seeds = [4]
+    seeds = [1]
     config_space = get_gru_config_space()
 
     for gru_seed in seeds:
@@ -267,7 +267,7 @@ def train_gru():
 
             for dataset_name, dataset_path in datasets.items():
                 try:
-                    if gru_seed == 4:
+                    if gru_seed == 1:
                         config_file = f"{dataset_name}_config_{config_id}_seed5.json"
                         config_path = os.path.join("results", "GRU", dataset_name, f"config_{config_id}", config_file)
 
@@ -304,13 +304,13 @@ def train_gru():
 
                         seq_len = input_shape[0] if isinstance(input_shape, (tuple, list)) else 0
                         if seq_len > 50000:
-                            batch_size = 4
-                        elif seq_len > 20000:
                             batch_size = 8
-                        elif seq_len > 10000:
+                        elif seq_len > 20000:
                             batch_size = 16
-                        else:
+                        elif seq_len > 10000:
                             batch_size = 32
+                        else:
+                            batch_size = 64
 
                         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=(len(train_dataset) > batch_size), num_workers=0)
                         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)

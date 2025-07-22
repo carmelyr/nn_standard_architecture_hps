@@ -16,29 +16,30 @@ from torch.utils.data import Subset
 from sktime.datasets import load_from_tsfile
 from sklearn.preprocessing import LabelEncoder
 from scipy.io import arff
+import argparse
 
 datasets = {
-    "classification_ozone": "datasets/classification_ozone/X_train.csv",
-    "AbnormalHeartbeat": "datasets/AbnormalHeartbeat/AbnormalHeartbeat_TRAIN.txt",
-    "Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
-    "ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
-    "Beef": "datasets/Beef/Beef_TRAIN.txt",
-    "BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
-    "BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
-    "BinaryHeartbeat": "datasets/BinaryHeartbeat/BinaryHeartbeat_TRAIN.txt",
-    "Car": "datasets/Car/Car_TRAIN.txt",
-    "CBF": "datasets/CBF/CBF_TRAIN.txt",
-    "CatsDogs": "datasets/CatsDogs/CatsDogs_TRAIN.ts",
-    "ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
-    "CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
-    "CounterMovementJump": "datasets/CounterMovementJump/CounterMovementJump_TRAIN.ts",
-    "DucksAndGeese": "datasets/DucksAndGeese/DucksAndGeese_TRAIN.ts",
-    "EigenWorms": "datasets/EigenWorms/EigenWorms_TRAIN.ts",
-    "FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
-    "FaultDetectionB": "datasets/FaultDetectionB/FaultDetectionB_TRAIN.ts",
+    #"classification_ozone": "datasets/classification_ozone/X_train.csv",
+    #"AbnormalHeartbeat": "datasets/AbnormalHeartbeat/AbnormalHeartbeat_TRAIN.txt",
+    #"Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
+    #"ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
+    #"Beef": "datasets/Beef/Beef_TRAIN.txt",
+    #"BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
+    #"BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
+    #"BinaryHeartbeat": "datasets/BinaryHeartbeat/BinaryHeartbeat_TRAIN.txt",
+    #"Car": "datasets/Car/Car_TRAIN.txt",
+    #"CBF": "datasets/CBF/CBF_TRAIN.txt",
+    #"CatsDogs": "datasets/CatsDogs/CatsDogs_TRAIN.ts",
+    #"ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
+    #"CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
+    #"CounterMovementJump": "datasets/CounterMovementJump/CounterMovementJump_TRAIN.ts",
+    #"DucksAndGeese": "datasets/DucksAndGeese/DucksAndGeese_TRAIN.ts",
+    #"EigenWorms": "datasets/EigenWorms/EigenWorms_TRAIN.ts",
+    #"FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
+    #"FaultDetectionB": "datasets/FaultDetectionB/FaultDetectionB_TRAIN.ts",
     "HouseTwenty": "datasets/HouseTwenty/HouseTwenty_TRAIN.txt",
-    "KeplerLightCurves": "datasets/KeplerLightCurves/KeplerLightCurves_TRAIN.ts",
-    "RightWhaleCalls": "datasets/RightWhaleCalls/RightWhaleCalls_TRAIN.arff",
+    #"KeplerLightCurves": "datasets/KeplerLightCurves/KeplerLightCurves_TRAIN.ts",
+    #"RightWhaleCalls": "datasets/RightWhaleCalls/RightWhaleCalls_TRAIN.arff",
 }
 
 class JSONLogger(pl.callbacks.Callback):
@@ -111,11 +112,11 @@ def load_dataset(path, dataset_name=None):
                     for segment in segments[:-1]:
                         values = list(map(float, segment.split(",")))
                         series.append(values)
-                    data.append(np.array(series))  # (channels, time)
+                    data.append(np.array(series))    # (channels, time)
                     labels.append(segments[-1])
-            X = np.stack(data)  # (samples, channels, time)
+            X = np.stack(data)                      # (samples, channels, time)
             y = np.array(labels)
-            return X.transpose(0, 2, 1), y  # (samples, time, channels)
+            return X.transpose(0, 2, 1), y          # (samples, time, channels)
 
         train_path = path.replace("_TEST.ts", "_TRAIN.ts")
         test_path = path
@@ -170,7 +171,6 @@ def load_dataset(path, dataset_name=None):
     else:
         raise ValueError(f"Unsupported file format: {path}")
     
-    # Merge train and test
     X = np.concatenate([X_train, X_test])
     y = np.concatenate([y_train, y_test])
 
@@ -184,7 +184,7 @@ def load_dataset(path, dataset_name=None):
     X = np.where(np.isposinf(X), 1e6, X)
     X = np.where(np.isneginf(X), -1e6, X)
 
-    TARGET_SEQ_LEN = 2000 
+    TARGET_SEQ_LEN = 1200 
     
     if X.shape[1] > TARGET_SEQ_LEN:
         original_length = X.shape[1]
@@ -196,7 +196,6 @@ def load_dataset(path, dataset_name=None):
         else: 
             X = X[:, ::downsample_factor]
 
-    # Convert to tensors
     if X.ndim == 1:
         X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(-1).unsqueeze(-1)
     elif X.ndim == 2:
@@ -233,8 +232,8 @@ def save_results(arch_name, dataset_name, config_idx, metrics, transformer_seed)
     print(f"✔ Saved: {out_path}")
 
 # this method is used to train the transformer model
-def train_transformer():
-    seeds = [1]
+def train_transformer(selected_config_indices):
+    seeds = [2]
     config_space = get_transformer_config_space()
 
     for transformer_seed in seeds:
@@ -262,53 +261,33 @@ def train_transformer():
             print("Using CPU")
 
         # 100 configurations
-        for config_idx in range(100):
+        for config_idx in selected_config_indices:
             config_id = config_idx + 1
 
             for dataset_name, dataset_path in datasets.items():
-                result_path = os.path.join(
-                    "results", "Transformer", dataset_name,
-                    f"config_{config_id}",
-                    f"{dataset_name}_config_{config_id}_seed{transformer_seed}.json"
-                )
-
-                if os.path.exists(result_path):
-                    print(f"[SKIP] Config {config_id} for {dataset_name} already exists.")
-                    continue  # Skip completed config
-
-                # Sample new config
-                # Attempt to load config from seed1
-                seed1_path = os.path.join(
-                    "results", "Transformer", dataset_name,
-                    f"config_{config_id}",
-                    f"{dataset_name}_config_{config_id}_seed1.json"
-                )
-
-                if os.path.exists(seed1_path):
-                    with open(seed1_path, "r") as f:
-                        sampled_config = json.load(f)["hyperparameters"]
-                    print(f"[INFO] Loaded hyperparameters from seed1 for config_{config_id}: {sampled_config}")
-                else:
-                    sampled_config = dict(config_space.sample_configuration())
-                    sampled_config = {
-                        k: v.item() if isinstance(v, np.generic) else v
-                        for k, v in sampled_config.items()
-                    }
-                    print(f"[INFO] Sampled new hyperparameters for config_{config_id}")
-
-                sampled_config = {
-                    k: v.item() if isinstance(v, np.generic) else v
-                    for k, v in sampled_config.items()
-                }
-                print(f"[INFO] New config sampled for {dataset_name} config {config_id}")
-
                 try:
-                    dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
+                    if transformer_seed == 2:
+                        config_file = f"{dataset_name}_config_{config_id}_seed1.json"
+                        config_path = os.path.join("results", "Transformer", dataset_name, f"config_{config_id}", config_file)
+
+                        if os.path.exists(config_path):
+                            with open(config_path, "r") as f:
+                                sampled_config = json.load(f)["hyperparameters"]
+                            print(f"[INFO] Loaded hyperparameters from seed1 for {dataset_name} config_{config_id}")
+                        else:
+                            print(f"[SKIP] Missing seed1 config for {dataset_name} config_{config_id}")
+                            continue            # skips the dataset if seed1 config is missing
+                    else:
+                        sampled_config = dict(config_space.sample_configuration())
+                        sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
+                        
+                    print(f"\nTraining on {dataset_name} with config {config_idx + 1}")
                     
+                    dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
                     print(f"Input shape: {input_shape}, Num classes: {num_classes}")
 
                     y_numpy = dataset.targets
-                    if len(y_numpy) > 1000:  # Large dataset
+                    if len(y_numpy) > 1000:
                         train_size = 50 * num_classes
                         sss = StratifiedShuffleSplit(n_splits=5, train_size=train_size, random_state=transformer_seed)
                     else:
@@ -324,13 +303,13 @@ def train_transformer():
 
                         seq_len = input_shape[0] if isinstance(input_shape, (tuple, list)) else 0
                         if seq_len > 50000:
-                            batch_size = 2
-                        elif seq_len > 20000:
-                            batch_size = 4
-                        elif seq_len > 10000:
                             batch_size = 8
-                        else:
+                        elif seq_len > 20000:
                             batch_size = 16
+                        elif seq_len > 10000:
+                            batch_size = 32
+                        else:
+                            batch_size = 32
 
                         train_loader = DataLoader(
                             train_dataset, 
@@ -363,8 +342,8 @@ def train_transformer():
                             min_delta=0.001
                         )
                         trainer = pl.Trainer(
-                            accelerator="gpu",
-                            precision=32,
+                            accelerator="cuda",
+                            precision="16-mixed",
                             max_epochs=1024,
                             enable_checkpointing=False,
                             logger=False,
@@ -434,4 +413,15 @@ def train_transformer():
                     continue
 
 if __name__ == "__main__":
-    train_transformer()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--configs", type=str, help="Comma-separated list of config indices to run, e.g., 2,5,8")
+    args = parser.parse_args()
+
+    if args.configs:
+        selected_config_ids = [int(i) for i in args.configs.split(",")]
+        selected_indices = [i - 1 for i in selected_config_ids]  # shift back to 0-indexed
+    else:
+        selected_indices = list(range(100))  # default: run all
+
+    train_transformer(selected_indices)
+

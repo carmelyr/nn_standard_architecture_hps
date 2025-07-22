@@ -145,8 +145,8 @@ def process_model_results(model, result_root, output_root, max_epoch=20):
     print(f"Completed processing {model}")
 
 def build_all_surrogate_datasets(max_epoch=20):
-    models = ["FCNN", "CNN", "LSTM", "GRU", "Transformer"]
-    #models = ["CNN"]
+    #models = ["FCNN", "CNN", "LSTM", "GRU", "Transformer"]
+    models = ["CNN"]
 
     for model in models:
         result_root = os.path.join("results", model)

@@ -2,20 +2,14 @@ import os
 import pandas as pd
 import numpy as np
 import csv
+import json
+from sklearn.utils import shuffle
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_absolute_error
-
-RESULTS_FILE = "linear_regression_results.csv"
-
-# writes a header if file does not exist yet
-if not os.path.exists(RESULTS_FILE):
-    with open(RESULTS_FILE, mode="w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Model", "Dataset", "Regressor", "R2", "RMSE", "MAE"])
 
 # this function processes each CSV file from the surrogate_datasets directory
 def process_csv(csv_path, model_name, dataset_name):
@@ -30,7 +24,6 @@ def process_csv(csv_path, model_name, dataset_name):
         print(f"Failed to read {csv_path}: {e}")
         return
 
-
     if "val_acc_20" not in df.columns:
         print(f"'val_acc_20' missing in {csv_path}. Skipping.")
         return
@@ -42,67 +35,132 @@ def process_csv(csv_path, model_name, dataset_name):
 
     X = df[hp_cols]
     y = df["val_acc_20"].dropna()
-
     X = X.loc[y.index]
 
-    print(f"Total rows in CSV: {len(df)}")
-
-    # one-hot encodes and imputes missing values
     X = pd.get_dummies(X)
     X = pd.DataFrame(SimpleImputer(strategy='mean').fit_transform(X), columns=X.columns)
     y = y.reset_index(drop=True)
     X = X.reset_index(drop=True)
 
     print(f"Rows after cleaning: {len(X)}")
-
     if len(X) < 2:
         print("Not enough samples after cleaning. Skipping.")
         return
 
-    # train-test split with 80% training and 20% testing
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    r2_scores, rmse_scores, mae_scores = [], [], []
+    all_preds, all_actuals = [], []
 
-    # train model using linear regression
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    # --- Learning curve evaluation --- #
+    train_sizes = [20, 40, 60, 80]      # training sizes for learning curves
+    metrics_per_size = {size: {'r2': [], 'rmse': [], 'mae': []} for size in train_sizes}
 
-    # calculates R² and RMSE
-    r2 = r2_score(y_test, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    mae = mean_absolute_error(y_test, y_pred)
+    # 20x holdout splits for learning curves
+    for seed in range(20):
+        # shuffles the dataset for each seed
+        X_shuffled, y_shuffled = shuffle(X, y, random_state=seed)
 
-    # logs results
-    with open(RESULTS_FILE, mode="a", newline="") as f:
+        for size in train_sizes:
+            if size > len(X_shuffled) - 20:
+                continue
+
+            X_train = X_shuffled[:size]
+            y_train = y_shuffled[:size]
+            X_val = X_shuffled[-20:]
+            y_val = y_shuffled[-20:]
+
+            model = LinearRegression()
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_val)
+
+            metrics_per_size[size]['r2'].append(r2_score(y_val, y_pred))
+            metrics_per_size[size]['rmse'].append(np.sqrt(mean_squared_error(y_val, y_pred)))
+            metrics_per_size[size]['mae'].append(mean_absolute_error(y_val, y_pred))
+
+
+    # --- Final evaluation on the full dataset --- #
+    for seed in range(20):
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=seed)
+
+        model = LinearRegression()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_val)
+
+        r2_scores.append(r2_score(y_val, y_pred))
+        rmse_scores.append(np.sqrt(mean_squared_error(y_val, y_pred)))
+        mae_scores.append(mean_absolute_error(y_val, y_pred))
+
+        all_preds.extend(y_pred)
+        all_actuals.extend(y_val)
+
+    # computes mean ± std
+    r2_mean, r2_std = np.mean(r2_scores), np.std(r2_scores)
+    rmse_mean, rmse_std = np.mean(rmse_scores), np.std(rmse_scores)
+    mae_mean, mae_std = np.mean(mae_scores), np.std(mae_scores)
+
+    print(f"R²:   {r2_mean:.4f} ± {r2_std:.4f}")
+    print(f"RMSE: {rmse_mean:.4f} ± {rmse_std:.4f}")
+    print(f"MAE:  {mae_mean:.4f} ± {mae_std:.4f}")
+
+    # saves to CSV
+    results_dir = os.path.join("linear_regression_results", model_name)
+    os.makedirs(results_dir, exist_ok=True)
+    results_file = os.path.join(results_dir, f"{model_name}_results.csv")
+
+    write_header = not os.path.exists(results_file)
+    with open(results_file, mode="a", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([model_name, dataset_name, "LinearRegression", round(r2, 4), round(rmse, 4), round(mae, 4)])
+        if write_header:
+            writer.writerow(["Model", "Dataset", "Regressor", "R2", "R2_std", "RMSE", "RMSE_std", "MAE", "MAE_std"])
+        writer.writerow([model_name, dataset_name, "LinearRegression", round(r2_mean, 4), round(r2_std, 4), round(rmse_mean, 4), round(rmse_std, 4), round(mae_mean, 4), round(mae_std, 4)])
 
-    print(f"R²: {r2:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}")
+    # scatter plot
+    all_preds = np.array(all_preds)
+    all_actuals = np.array(all_actuals)
 
-    # regression fit line
-    fit_model = LinearRegression()
-    fit_model.fit(y_test.values.reshape(-1, 1), y_pred)
-    x_line = np.linspace(y_test.min(), y_test.max(), 100).reshape(-1, 1)
-    y_line = fit_model.predict(x_line)
+    plt.figure(figsize=(7, 7))
+    plt.scatter(all_actuals, all_preds, color='DarkCyan', alpha=0.6, edgecolors='k', s=70)
 
-    # plot
-    plt.figure(figsize=(6, 6))
-    plt.scatter(y_test, y_pred, color='DeepPink', alpha=0.6, label="Predicted Points")
-    plt.plot(x_line, y_line, color='darkslateblue', label="Regression Fit")
-    plt.xlabel("True Accuracy at Epoch 20")
+    min_val = min(all_actuals.min(), all_preds.min())
+    max_val = max(all_actuals.max(), all_preds.max())
+    plt.plot([min_val, max_val], [min_val, max_val], 'k--', lw=2)
+
+    textstr = '\n'.join((f'$R^2$: {r2_mean:.2f} ± {r2_std:.2f}', f'RMSE: {rmse_mean:.2f} ± {rmse_std:.2f}', f'MAE: {mae_mean:.2f} ± {mae_std:.2f}'))
+    plt.gca().text(0.05, 0.95, textstr, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", edgecolor='gray', facecolor='white'))
+
+    plt.xlabel("Actual Validation Accuracy")
     plt.ylabel("Predicted Accuracy")
-    plt.title(f"{model_name}/{dataset_name}")
-    plt.legend()
+    plt.title(f"{model_name} - {dataset_name}\nLinear Regression Surrogate")
     plt.grid(True)
+    plt.tight_layout()
 
-    # saves the plots
     model_plot_dir = os.path.join("linear_regression_plots", model_name)
     os.makedirs(model_plot_dir, exist_ok=True)
     plot_path = os.path.join(model_plot_dir, f"{model_name}_{dataset_name}_linear.png")
-    plt.tight_layout()
-    plt.savefig(plot_path)
+    plt.savefig(plot_path, dpi=300)
     plt.close()
     print(f"Saved plot to: {plot_path}")
+
+    # --- Save learning curve data to JSON --- #
+    learning_curve_data = {
+        "dataset": dataset_name,
+        "regressor": "LinearRegression",
+        "train_sizes": train_sizes,
+        "r2_mean": [np.mean(metrics_per_size[size]['r2']) for size in train_sizes],
+        "r2_std": [np.std(metrics_per_size[size]['r2']) for size in train_sizes],
+        "rmse_mean": [np.mean(metrics_per_size[size]['rmse']) for size in train_sizes],
+        "rmse_std": [np.std(metrics_per_size[size]['rmse']) for size in train_sizes],
+        "mae_mean": [np.mean(metrics_per_size[size]['mae']) for size in train_sizes],
+        "mae_std": [np.std(metrics_per_size[size]['mae']) for size in train_sizes],
+    }
+
+    curve_json_dir = os.path.join("learning_curve_data", model_name)
+    os.makedirs(curve_json_dir, exist_ok=True)
+    json_path = os.path.join(curve_json_dir, f"LinearRegression_{dataset_name}.json")
+
+    with open(json_path, "w") as f:
+        json.dump(learning_curve_data, f, indent=2)
+
+    print(f"Saved learning curve data to: {json_path}")
 
 if __name__ == "__main__":
     BASE_DIR = "surrogate_datasets"

@@ -113,11 +113,11 @@ def load_dataset(path, dataset_name=None):
                     for segment in segments[:-1]:
                         values = list(map(float, segment.split(",")))
                         series.append(values)
-                    data.append(np.array(series))  # (channels, time)
+                    data.append(np.array(series))   # (channels, time)
                     labels.append(segments[-1])
-            X = np.stack(data)  # (samples, channels, time)
+            X = np.stack(data)                      # (samples, channels, time)
             y = np.array(labels)
-            return X.transpose(0, 2, 1), y  # (samples, time, channels)
+            return X.transpose(0, 2, 1), y          # (samples, time, channels)
 
         train_path = path.replace("_TEST.ts", "_TRAIN.ts")
         test_path = path
@@ -172,11 +172,9 @@ def load_dataset(path, dataset_name=None):
     else:
         raise ValueError(f"Unsupported file format: {path}")
     
-    # Merge train and test
     X = np.concatenate([X_train, X_test])
     y = np.concatenate([y_train, y_test])
 
-    # Only shift labels if they start at 1
     if np.min(y) == 1:
         y -= 1
 
@@ -188,17 +186,17 @@ def load_dataset(path, dataset_name=None):
     X = np.where(np.isposinf(X), 1e6, X)
     X = np.where(np.isneginf(X), -1e6, X)
     
-    TARGET_SEQ_LEN = 5000  # Our target sequence length after downsampling
+    TARGET_SEQ_LEN = 5000
     
     if X.shape[1] > TARGET_SEQ_LEN:
         original_length = X.shape[1]
         downsample_factor = int(np.ceil(original_length / TARGET_SEQ_LEN))
         print(f"[INFO] Downsampling sequence length from {original_length} to {original_length // downsample_factor} (factor: {downsample_factor}x)")
         
-        if X.ndim == 3:  # Multivariate case (samples, time, channels)
-            # Downsample along time dimension
+        if X.ndim == 3:  # multivariate case (samples, time, channels)
+            # downsamples along time dimension
             X = X[:, ::downsample_factor, :]
-        else:  # Univariate case (samples, time)
+        else:  # univariate case (samples, time)
             X = X[:, ::downsample_factor]
 
     # Convert to tensors
@@ -213,7 +211,7 @@ def load_dataset(path, dataset_name=None):
 
     num_classes = len(np.unique(y))
     dataset = TensorDataset(X_tensor, y_tensor)
-    dataset.targets = y  # For stratified split
+    dataset.targets = y
 
     print(f"\nDataset: {dataset_name}")
     print(f"X shape: {X.shape}, y shape: {y.shape}")
@@ -235,11 +233,11 @@ def save_results(arch_name, dataset_name, config_idx, metrics, lstm_seed):
 
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=4)
-    print(f"✔ Saved: {out_path}")
+    print(f"Saved: {out_path}")
 
 # this method trains the LSTM model
 def train_lstm():
-    seeds = [1]
+    seeds = [2]
     config_space = get_lstm_config_space()
 
     for lstm_seed in seeds:
@@ -256,6 +254,9 @@ def train_lstm():
         if torch.cuda.is_available():
             torch.cuda.manual_seed_all(lstm_seed)
 
+        if torch.backends.cudnn.is_available():
+            torch.backends.cudnn.benchmark = True
+
         if torch.cuda.is_available():
             accelerator = "gpu"
             print("Using CUDA backend")
@@ -268,12 +269,29 @@ def train_lstm():
 
         # 100 configurations
         for config_idx in range(100):
-            sampled_config = dict(config_space.sample_configuration())
-            sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
+            config_id = config_idx + 1
 
             for dataset_name, dataset_path in datasets.items():
                 try:
+                    if lstm_seed == 2:
+                        config_file = f"{dataset_name}_config_{config_id}_seed1.json"
+                        config_path = os.path.join("results", "LSTM", dataset_name, f"config_{config_id}", config_file)
+
+                        if os.path.exists(config_path):
+                            with open(config_path, "r") as f:
+                                sampled_config = json.load(f)["hyperparameters"]
+                            print(f"[INFO] Loaded hyperparameters from seed1 for {dataset_name} config_{config_id}")
+                        else:
+                            print(f"[SKIP] Missing seed1 config for {dataset_name} config_{config_id}")
+                            continue                    # skips the dataset if seed1 config is missing
+                    else:
+                        sampled_config = dict(config_space.sample_configuration())
+                        sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
+                        
+                    print(f"\nTraining on {dataset_name} with config {config_idx + 1}")
+                    
                     dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
+                    print(f"Input shape: {input_shape}, Num classes: {num_classes}")
                     
                     y_numpy = dataset.targets
                     if len(y_numpy) > 1000:  # Large dataset
@@ -293,13 +311,13 @@ def train_lstm():
 
                         seq_len = input_shape[0] if isinstance(input_shape, (tuple, list)) else 0
                         if seq_len > 50000:
-                            batch_size = 4
-                        elif seq_len > 20000:
-                            batch_size = 8
-                        elif seq_len > 10000:
                             batch_size = 16
-                        else:
+                        elif seq_len > 20000:
                             batch_size = 32
+                        elif seq_len > 10000:
+                            batch_size = 64
+                        else:
+                            batch_size = 128
 
                         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=(len(train_dataset) > batch_size), num_workers=0)
                         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
@@ -316,9 +334,10 @@ def train_lstm():
 
                         early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
                         trainer = pl.Trainer(
-                            accelerator="gpu",
+                            accelerator="cuda",
                             devices=1,
                             max_epochs=1024,
+                            precision="16-mixed",
                             enable_checkpointing=False,
                             logger=False,
                             callbacks=[

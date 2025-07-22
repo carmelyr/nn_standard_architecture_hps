@@ -6,6 +6,7 @@ import json
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from json import JSONDecodeError
 
 def load_results(base_dir="results"):
     records = []
@@ -32,8 +33,12 @@ def load_results(base_dir="results"):
                         continue
                         
                     filepath = os.path.join(config_dir, file)
-                    with open(filepath) as f:
-                        data = json.load(f)
+                    try:
+                        with open(filepath) as f:
+                            data = json.load(f)
+                    except (JSONDecodeError, ValueError) as e:
+                        print(f"Skipping invalid JSON file: {filepath} ({e})")
+                        continue
                         
                     dataset = data["dataset_stats"]["name"]
                     val_acc = data.get("val_accuracy", [])
@@ -63,9 +68,9 @@ def generate_heatmap(df, metric="max_val_accuracy"):
     pivot = df.groupby(["dataset", "classifier"])[metric].max().unstack()
     #pivot = df.groupby(["dataset", "classifier"])[metric].mean().unstack()
 
-    plt.figure(figsize=(12, len(pivot) * 0.4))
+    plt.figure(figsize=(12, len(pivot) * 0.3))
     sns.heatmap(pivot, annot=True, fmt=".2f", cmap="RdPu", vmin=0, vmax=1)
-    plt.title(f"Validation Accuracy Heatmap ({metric})")
+    plt.title(f"Validation Accuracy Heatmap ({metric})", fontweight='bold', fontsize=12)
     plt.xlabel("Classifier")
     plt.ylabel("Dataset")
     plt.tight_layout()

@@ -54,8 +54,7 @@ for model in models:
             annotations.loc[dataset, model] = "0 (i)"
 
 plt.figure(figsize=(12, len(datasets) * 0.25 + 1.5))
-sns.heatmap(availability, cmap="YlOrRd", annot=annotations, fmt="s", linewidths=0.5,
-            cbar_kws={"label": "Completed Seeds"})
+sns.heatmap(availability, cmap="YlOrRd", annot=annotations, fmt="s", linewidths=0.5, cbar_kws={"label": "Completed Seeds"})
 plt.title("Seed Completion Status per Dataset and Model\n(i) = In Progress (config_1 exists, config_100 not yet or incomplete)")
 plt.xlabel("Model")
 plt.ylabel("Dataset")

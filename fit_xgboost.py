@@ -2,19 +2,13 @@ import os
 import pandas as pd
 import numpy as np
 import csv
+import json
 import matplotlib.pyplot as plt
 from xgboost import XGBRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from sklearn.impute import SimpleImputer
-
-RESULTS_FILE = "xgboost_results.csv"
-
-# write header if file does not exist
-if not os.path.exists(RESULTS_FILE):
-    with open(RESULTS_FILE, mode="w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Model", "Dataset", "Regressor", "R2", "RMSE", "MAE"])
+from sklearn.utils import shuffle
 
 def process_dataset(model_name, dataset_name, dataset_path):
     print(f"\nProcessing: {model_name}/{dataset_name}")
@@ -25,9 +19,7 @@ def process_dataset(model_name, dataset_name, dataset_path):
             csv_path = os.path.join(dataset_path, fname)
             try:
                 df = pd.read_csv(csv_path)
-                if "val_acc_20" not in df.columns:
-                    continue
-                if len(df) < 5:
+                if "val_acc_20" not in df.columns or len(df) < 5:
                     continue
                 all_dfs.append(df)
             except Exception as e:
@@ -38,8 +30,8 @@ def process_dataset(model_name, dataset_name, dataset_path):
         return
 
     df = pd.concat(all_dfs, ignore_index=True)
+    hp_cols = [col for col in df.columns if col.startswith(("dropout", "learning_rate", "num_", "activation", "kernel", "pooling", "bidirectional", "weight_decay", "ff_dim"))]
 
-    hp_cols = [col for col in df.columns if col not in ["dataset"] and col.startswith(("dropout", "learning_rate", "num_", "activation", "kernel", "pooling", "bidirectional", "weight_decay", "ff_dim"))]
     if not hp_cols:
         print(f"No hyperparameter columns in {dataset_name}. Skipping.")
         return
@@ -47,8 +39,6 @@ def process_dataset(model_name, dataset_name, dataset_path):
     X = df[hp_cols]
     y = df["val_acc_20"].dropna()
     X = X.loc[y.index]
-
-    print(f"Total rows in combined CSVs: {len(df)}")
 
     X = pd.get_dummies(X)
     X = pd.DataFrame(SimpleImputer(strategy='mean').fit_transform(X), columns=X.columns)
@@ -60,36 +50,62 @@ def process_dataset(model_name, dataset_name, dataset_path):
         print("Not enough samples after cleaning. Skipping.")
         return
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    r2_scores, rmse_scores, mae_scores = [], [], []
+    all_preds, all_actuals = [], []
 
-    model = XGBRegressor(n_estimators=100, verbosity=0, random_state=42)
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    # --- 20x Holdout Evaluation --- #
+    for seed in range(20):
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=seed)
 
-    r2 = r2_score(y_test, y_pred)
-    rmse = np.sqrt(mean_squared_error(y_test, y_pred))
-    mae = mean_absolute_error(y_test, y_pred)
+        model = XGBRegressor()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_val)
 
-    with open(RESULTS_FILE, mode="a", newline="") as f:
+        r2_scores.append(r2_score(y_val, y_pred))
+        rmse_scores.append(np.sqrt(mean_squared_error(y_val, y_pred)))
+        mae_scores.append(mean_absolute_error(y_val, y_pred))
+
+        all_preds.extend(y_pred)
+        all_actuals.extend(y_val)
+
+    # final mean ± std values
+    r2_mean, r2_std = np.mean(r2_scores), np.std(r2_scores)
+    rmse_mean, rmse_std = np.mean(rmse_scores), np.std(rmse_scores)
+    mae_mean, mae_std = np.mean(mae_scores), np.std(mae_scores)
+
+    print("XGBoost Results (20x 80-20 Holdout):")
+    print(f"R²:   {r2_mean:.4f} ± {r2_std:.4f}")
+    print(f"RMSE: {rmse_mean:.4f} ± {rmse_std:.4f}")
+    print(f"MAE:  {mae_mean:.4f} ± {mae_std:.4f}")
+
+    # saves CSV summary
+    results_dir = os.path.join("xgboost_results", model_name)
+    os.makedirs(results_dir, exist_ok=True)
+    results_file = os.path.join(results_dir, f"{model_name}_results.csv")
+
+    write_header = not os.path.exists(results_file)
+    with open(results_file, mode="a", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([model_name, dataset_name, "XGBoost", round(r2, 4), round(rmse, 4), round(mae, 4)])
+        if write_header:
+            writer.writerow(["Model", "Dataset", "Regressor", "R2", "R2_std", "RMSE", "RMSE_std", "MAE", "MAE_std"])
+        writer.writerow([model_name, dataset_name, "XGBoost", round(r2_mean, 4), round(r2_std, 4), round(rmse_mean, 4), round(rmse_std, 4), round(mae_mean, 4), round(mae_std, 4)])
 
-    print(f"R²: {r2:.4f}, RMSE: {rmse:.4f}, MAE: {mae:.4f}")
+    all_preds = np.array(all_preds)
+    all_actuals = np.array(all_actuals)
 
     plt.figure(figsize=(7, 7))
-    plt.scatter(y_test, y_pred, color='FireBrick', alpha=0.7, edgecolors='k', s=70, label="Predicted vs Actual")
+    plt.scatter(all_actuals, all_preds, color='FireBrick', alpha=0.5, edgecolors='k', s=70)
 
-    min_val = min(y_test.min(), y_pred.min())
-    max_val = max(y_test.max(), y_pred.max())
-    plt.plot([min_val, max_val], [min_val, max_val], 'k--', lw=2, label="Perfect Prediction")
+    min_val = min(all_actuals.min(), all_preds.min())
+    max_val = max(all_actuals.max(), all_preds.max())
+    plt.plot([min_val, max_val], [min_val, max_val], 'k--', lw=2)
 
-    textstr = '\n'.join((f'$R^2$: {r2:.2f}', f'RMSE: {rmse:.2f}', f'MAE: {mae:.2f}'))
+    textstr = '\n'.join((f'$R^2$: {r2_mean:.2f} ± {r2_std:.2f}', f'RMSE: {rmse_mean:.2f} ± {rmse_std:.2f}', f'MAE: {mae_mean:.2f} ± {mae_std:.2f}'))
     plt.gca().text(0.05, 0.95, textstr, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top', bbox=dict(boxstyle="round,pad=0.3", edgecolor='gray', facecolor='white'))
 
-    plt.xlabel("Actual Validation Accuracy at Epoch 20")
-    plt.ylabel("Predicted Validation Accuracy")
-    plt.title(f"{model_name} - {dataset_name}\nXGBoost Prediction", fontsize=13)
-    plt.legend(loc='lower right')
+    plt.xlabel("Actual Validation Accuracy")
+    plt.ylabel("Predicted Accuracy")
+    plt.title(f"{model_name} - {dataset_name}\nXGBoost Surrogate")
     plt.grid(True)
     plt.tight_layout()
 
@@ -99,6 +115,76 @@ def process_dataset(model_name, dataset_name, dataset_path):
     plt.savefig(plot_path, dpi=300)
     plt.close()
     print(f"Saved plot to: {plot_path}")
+
+    # --- Generate learning curves --- #
+    train_sizes = [20, 40, 60, 80]
+    metrics_per_size = {size: {'r2': [], 'rmse': [], 'mae': []} for size in train_sizes}
+
+    # --- 20x Holdout Learning Curves --- #
+    for seed in range(20):
+        X_shuffled, y_shuffled = shuffle(X, y, random_state=seed)
+
+        for size in train_sizes:
+            if size > len(X_shuffled) - 20:
+                continue
+
+            X_train = X_shuffled[:size]
+            y_train = y_shuffled[:size]
+            X_val = X_shuffled[-20:]
+            y_val = y_shuffled[-20:]
+
+            model = XGBRegressor()
+            model.fit(X_train, y_train)
+            y_pred = model.predict(X_val)
+
+            metrics_per_size[size]['r2'].append(r2_score(y_val, y_pred))
+            metrics_per_size[size]['rmse'].append(np.sqrt(mean_squared_error(y_val, y_pred)))
+            metrics_per_size[size]['mae'].append(mean_absolute_error(y_val, y_pred))
+
+    # --- Plot learning curves ---
+    """fig, ax = plt.subplots(3, 1, figsize=(7, 12))
+    metrics = ['r2', 'rmse', 'mae']
+    titles = ['R² Score', 'RMSE', 'MAE']
+
+    for i, metric in enumerate(metrics):
+        means = [np.mean(metrics_per_size[size][metric]) for size in train_sizes]
+        stds = [np.std(metrics_per_size[size][metric]) for size in train_sizes]
+
+        ax[i].errorbar(train_sizes, means, yerr=stds, label="XGBoost", marker='o', capsize=4)
+        ax[i].set_xlabel("Number of Training Examples")
+        ax[i].set_ylabel(titles[i])
+        ax[i].set_title(f"{titles[i]} vs Training Size — {dataset_name}")
+        ax[i].grid(True)
+
+    plt.tight_layout()
+    curve_plot_dir = os.path.join("xgboost_learning_curves", model_name)
+    os.makedirs(curve_plot_dir, exist_ok=True)
+    curve_path = os.path.join(curve_plot_dir, f"{model_name}_{dataset_name}_learning_curve.png")
+    plt.savefig(curve_path, dpi=300)
+    plt.close()
+    print(f"Saved learning curves to: {curve_path}")"""
+
+    # --- Save learning curve data to JSON --- #
+    learning_curve_data = {
+        "dataset": dataset_name,
+        "regressor": "XGBoost",
+        "train_sizes": train_sizes,
+        "r2_mean": [np.mean(metrics_per_size[size]['r2']) for size in train_sizes],
+        "r2_std": [np.std(metrics_per_size[size]['r2']) for size in train_sizes],
+        "rmse_mean": [np.mean(metrics_per_size[size]['rmse']) for size in train_sizes],
+        "rmse_std": [np.std(metrics_per_size[size]['rmse']) for size in train_sizes],
+        "mae_mean": [np.mean(metrics_per_size[size]['mae']) for size in train_sizes],
+        "mae_std": [np.std(metrics_per_size[size]['mae']) for size in train_sizes],
+    }
+
+    curve_json_dir = os.path.join("learning_curve_data", model_name)
+    os.makedirs(curve_json_dir, exist_ok=True)
+    json_path = os.path.join(curve_json_dir, f"XGBoost_{dataset_name}.json")
+
+    with open(json_path, "w") as f:
+        json.dump(learning_curve_data, f, indent=2)
+
+    print(f"Saved learning curve data to: {json_path}")
 
 if __name__ == "__main__":
     BASE_DIR = "surrogate_datasets"

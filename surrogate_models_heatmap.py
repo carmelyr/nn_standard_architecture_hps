@@ -5,19 +5,33 @@ import matplotlib.pyplot as plt
 from itertools import combinations
 
 def load_and_combine_results():
-    files = {
-        'LinearRegression': 'linear_regression_results.csv',
-        'RandomForest': 'random_forest_results.csv',
-        'XGBoost': 'xgboost_results.csv'
+    base_dirs = {
+        'LinearRegression': 'linear_regression_results',
+        'RandomForest': 'random_forest_results',
+        'XGBoost': 'xgboost_results'
     }
 
     dfs = []
-    for regressor, filename in files.items():
-        df = pd.read_csv(filename)
-        df['Regressor'] = regressor
-        dfs.append(df)
+    for regressor, base_dir in base_dirs.items():
+        if not os.path.exists(base_dir):
+            print(f"Warning: base directory '{base_dir}' does not exist.")
+            continue
 
-    combined_df = pd.concat(dfs)
+        for root, _, files in os.walk(base_dir):
+            for fname in files:
+                if fname.endswith("_results.csv"):
+                    fpath = os.path.join(root, fname)
+                    try:
+                        df = pd.read_csv(fpath)
+                        df['Regressor'] = regressor
+                        dfs.append(df)
+                    except Exception as e:
+                        print(f"Failed to read {fpath}: {e}")
+
+    if not dfs:
+        raise RuntimeError("No result files were loaded. Check paths or run regressors first.")
+
+    combined_df = pd.concat(dfs, ignore_index=True)
     combined_df = combined_df.drop_duplicates(subset=["Model", "Dataset", "Regressor"])
     return combined_df
 
@@ -65,8 +79,8 @@ def generate_pairwise_summary_heatmaps(combined_df):
             plt.figure(figsize=(8, 6))
             ax = sns.heatmap(heatmap_data.astype(float), cmap="coolwarm", center=0, annot=True, fmt=".3f", annot_kws={"size": 10}, linewidths=0.5, square=True, cbar=True)
             ax.collections[0].colorbar.set_label(f"{metric} Difference (A - B)", fontsize=10)
-            plt.title(f"{model_arch} - {metric} Avg Difference (Regressor vs. Regressor)")
-            plt.suptitle("Red = A better, Blue = B better", fontsize=8, y=0.98)
+            plt.title(f"{model_arch} - {metric} Avg Difference (Regressor vs. Regressor)", fontsize=12, fontweight='bold')
+            plt.suptitle("Red = A better, Blue = B better", fontsize=9, y=0.98)
             plt.xlabel("Regressor B", fontweight='bold')
             plt.ylabel("Regressor A", fontweight='bold')
             plt.tight_layout()
@@ -128,8 +142,8 @@ def generate_dataset_pairwise_heatmaps(combined_df):
                 plt.figure(figsize=(6, 5))
                 ax2 = sns.heatmap(diff_matrix, cmap="coolwarm", center=0, annot=True, fmt=".3f", cbar=True, square=True)
                 ax2.collections[0].colorbar.set_label(f"{metric} Difference (A - B)", fontsize=10)
-                plt.title(f"{model_arch} - {dataset} - {metric} (Regressor A - B)")
-                plt.suptitle("Red = A better, Blue = B better", fontsize=8, y=0.98)
+                plt.title(f"{model_arch} - {dataset} - {metric} (Regressor A - B)", fontsize=12, fontweight='bold')
+                plt.suptitle("Red = A better, Blue = B better", fontsize=9, y=0.98)
                 plt.xlabel("Regressor B", fontweight='bold')
                 plt.ylabel("Regressor A", fontweight='bold')
                 plt.tight_layout()

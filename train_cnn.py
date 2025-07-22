@@ -114,11 +114,11 @@ def load_dataset(path, dataset_name=None):
                     for segment in segments[:-1]:
                         values = list(map(float, segment.split(",")))
                         series.append(values)
-                    data.append(np.array(series))  # (channels, time)
+                    data.append(np.array(series))   # (channels, time)
                     labels.append(segments[-1])
-            X = np.stack(data)  # (samples, channels, time)
+            X = np.stack(data)                      # (samples, channels, time)
             y = np.array(labels)
-            return X.transpose(0, 2, 1), y  # (samples, time, channels)
+            return X.transpose(0, 2, 1), y          # (samples, time, channels)
 
         train_path = path.replace("_TEST.ts", "_TRAIN.ts")
         test_path = path
@@ -276,7 +276,7 @@ def train_cnn():
                     dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
                     
                     y_numpy = dataset.targets
-                    if len(y_numpy) > 1000:  # Large dataset
+                    if len(y_numpy) > 1000:  # large dataset
                         train_size = 50 * num_classes
                         sss = StratifiedShuffleSplit(n_splits=5, train_size=train_size, random_state=cnn_seed)
                     else:

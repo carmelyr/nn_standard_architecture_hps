@@ -50,10 +50,14 @@ def smooth_curve(values, window=5):
     series = pd.Series(values)
     return series.rolling(window, min_periods=1, center=True).mean().to_numpy()
 
+# plots the learning curves for a specific dataset and architecture
 def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5):
-    # groups metrics by configuration ID
-    grouped = defaultdict(list)
+    from matplotlib.cm import get_cmap
+
     base_path = os.path.join("results", arch_name, dataset_name)
+    grouped = defaultdict(list)
+
+    # groups metrics by configuration ID
     for config_dir in os.listdir(base_path):
         if not config_dir.startswith("config_"):
             continue
@@ -64,76 +68,145 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
                 with open(os.path.join(config_path, f), "r") as file:
                     grouped[config_id].append(json.load(file))
 
-    plt.figure(figsize=(10, 5))
+    os.makedirs(os.path.join("learning_curves", "plots", arch_name, dataset_name), exist_ok=True)
 
-    # loads all curves for the specified metric
-    all_curves = []
-    for runs in grouped.values():
-        for r in runs:
-            if "fold_logs" in r:
-                for fold in r["fold_logs"]:
-                    cleaned = [v if v is not None else np.nan for v in fold[metric]]    # replaces None with NaN
-                    all_curves.append(cleaned)
+    plt.figure(figsize=(12, 6))
+    epochs = None
+    final_vals = []
+
+    for config_id, runs in grouped.items():
+        seed_curves = []
+
+        for run in runs:
+            if "fold_logs" in run:
+                for fold in run["fold_logs"]:
+                    cleaned = [v if v is not None else np.nan for v in fold.get(metric, [])]
+                    seed_curves.append(cleaned)
             else:
-                cleaned = [v if v is not None else np.nan for v in r[metric]]           # replaces None with NaN
-                all_curves.append(cleaned)
+                cleaned = [v if v is not None else np.nan for v in run.get(metric, [])]
+                seed_curves.append(cleaned)
 
-    # pads the curves to the same length for plotting
-    max_len = max(len(c) for c in all_curves)
-    padded_matrix = np.full((len(all_curves), max_len), np.nan)
-    for i, curve in enumerate(all_curves):
-        padded_matrix[i, :len(curve)] = curve
+        # pads all curves to same length
+        max_len = max(len(c) for c in seed_curves)
+        padded = np.full((len(seed_curves), max_len), np.nan)
+        for i, curve in enumerate(seed_curves):
+            padded[i, :len(curve)] = curve
 
-    # smooths the curves using a rolling mean
-    smoothed_matrix = np.array([smooth_curve(row, window=smooth_window) for row in padded_matrix])
+        # average across folds + seeds
+        config_mean = np.nanmean(padded, axis=0)
+        config_mean_smoothed = smooth_curve(config_mean, window=smooth_window)
 
-    # aggregates the smoothed curves: calculates the global mean and standard deviation
-    global_mean = np.nanmean(smoothed_matrix, axis=0)
-    global_std = np.nanstd(smoothed_matrix, axis=0)
-    epochs = np.arange(1, max_len + 1)
+        epochs = np.arange(1, len(config_mean_smoothed) + 1)
 
-    plt.plot(epochs, global_mean, color="#FF01B3", linewidth=2, label="Global Mean")
-    lower = np.clip(global_mean - global_std, 0.0, 1.0)
-    upper = np.clip(global_mean + global_std, 0.0, 1.0)
-    plt.fill_between(epochs, lower, upper, color="#77BDFF", alpha=0.2)
+        plt.plot(epochs, config_mean_smoothed, alpha=0.4, linewidth=1)
 
-    custom_lines = [Line2D([0], [0], color='#FF01B3', lw=2, label='Global Mean'), Patch(facecolor="#77BDFF", edgecolor='none', alpha=0.2, label='Global Std Dev')]
+        final_vals.append(last_valid(config_mean_smoothed))
 
-    plt.legend(handles=custom_lines, loc='lower right')
-    plt.title(f"{metric.replace('val_', 'Validation ').title()} Over Epochs\n{dataset_name} ({arch_name})")
+    plt.title(f"{metric.replace('val_', 'Validation ').title()} Over Epochs\n{dataset_name} ({arch_name}) - All Configs")
     plt.xlabel("Epoch")
     plt.ylabel(metric.replace("_", " ").title())
     plt.grid(True)
 
-    total_runs = len(all_curves)
-    num_configs = len(grouped)
-    first_config_runs = next(iter(grouped.values()))
-    first_run = first_config_runs[0]
-    num_seeds = len(first_config_runs)
-    num_folds = len(first_run["fold_logs"])
-
-    total_runs = num_configs * num_seeds * num_folds        # calculates total runs: configs × seeds × folds
-    text = f"Total runs: {num_configs} configs × {num_seeds} seeds × {num_folds} folds = {total_runs}"
+    text = f"{len(grouped)} configs × {len(runs)} seeds × {len(seed_curves) // len(runs)} folds"
     plt.text(0.01, 0.01, text, transform=plt.gca().transAxes, fontsize=9, color='gray', ha='left', va='bottom')
 
-    last_vals = [last_valid(row) for row in padded_matrix]
-    max_last = np.nanmax(last_vals)
-    mean_last = np.nanmean(last_vals)
-    print(f"[{dataset_name} - {arch_name}] Max final {metric}: {max_last:.4f} | Mean final: {mean_last:.4f}")
-
-    plt.tight_layout()
-    metric_dirname = f"{metric}_curves"
-    plot_dir = os.path.join(os.path.dirname(__file__), "plots", arch_name, metric_dirname)
-    os.makedirs(plot_dir, exist_ok=True)
     filename = f"{dataset_name}_{metric}_{arch_name}.png"
-    plt.savefig(os.path.join(plot_dir, filename), dpi=300)
+    save_path = os.path.join("learning_curves", "plots", arch_name, dataset_name, filename)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300)
     plt.close()
+    print(f"[{dataset_name} - {arch_name}] Final {metric}: max={np.nanmax(final_vals):.4f}, mean={np.nanmean(final_vals):.4f}")
+
+    # ---- Representative curves ---- #
+    print(f"Plotting representative curves for {dataset_name}...")
+
+    # stores representative curves for each configuration
+    config_curves = []
+
+    for config_id, runs in grouped.items():
+        seed_curves = []
+
+        for run in runs:
+            if "fold_logs" in run:
+                for fold in run["fold_logs"]:
+                    cleaned = [v if v is not None else np.nan for v in fold.get(metric, [])]
+                    seed_curves.append(cleaned)
+            else:
+                cleaned = [v if v is not None else np.nan for v in run.get(metric, [])]
+                seed_curves.append(cleaned)
+
+        if not seed_curves:
+            continue
+
+        max_len = max(len(c) for c in seed_curves)
+        padded = np.full((len(seed_curves), max_len), np.nan)
+        for i, curve in enumerate(seed_curves):
+            padded[i, :len(curve)] = curve
+
+        config_mean = np.nanmean(padded, axis=0)
+        config_mean_smoothed = smooth_curve(config_mean, window=smooth_window)
+
+        def best_loss_score(curve, warmup=10):
+            curve = np.array(curve)
+            if np.all(np.isnan(curve)):
+                return np.inf
+            return np.nanmin(curve[warmup:])
+
+        if metric.endswith("loss"):
+            final_val = best_loss_score(config_mean_smoothed)
+        else:
+            final_val = last_valid(config_mean_smoothed)
+
+        config_curves.append((config_id, final_val, config_mean_smoothed))
+
+        # sorts curves by final value
+        # if loss metric, lower is better
+        ascending = metric.endswith("loss")
+        config_curves.sort(key=lambda x: x[1], reverse=not ascending)
+
+        n = len(config_curves)
+        indices = {
+            "Best": 0,
+            "3rd Quartile": int(0.25 * (n - 1)),
+            "Median": int(0.5 * (n - 1)),
+            "1st Quartile": int(0.75 * (n - 1)),
+            "Worst": n - 1
+        }
+
+    colors = {
+        "Worst": "#d73027",
+        "1st Quartile": "#fc8d59",
+        "Median": "#fee090",
+        "3rd Quartile": "#91bfdb",
+        "Best": "#4575b4"
+    }
+
+    plt.figure(figsize=(12, 6))
+    for label, idx in indices.items():
+        config_id, _, curve = config_curves[idx]
+        epochs = np.arange(1, len(curve) + 1)
+        plt.plot(epochs, curve, label=f"{label} (config_{config_id})", color=colors[label], linewidth=2)
+
+    plt.title(f"Representative Configs ({dataset_name} - {arch_name})\n{metric.replace('val_', 'Validation ').title()}")
+    plt.xlabel("Epoch")
+    plt.ylabel(metric.replace("_", " ").title())
+    plt.grid(True)
+    plt.legend()
+
+    rep_dir = os.path.join("learning_curves", "representative_curves", arch_name, dataset_name)
+    os.makedirs(rep_dir, exist_ok=True)
+    rep_filename = f"{dataset_name}_{metric}_{arch_name}_representative.png"
+    rep_path = os.path.join(rep_dir, rep_filename)
+    plt.tight_layout()
+    plt.savefig(rep_path, dpi=300)
+    plt.close()
+    print(f"Representative curves saved to {rep_path}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", nargs="+", required=True, help="Dataset name(s) or 'ALL'")
     parser.add_argument("--arch", nargs="+", required=True, help="Architecture name(s), e.g., FCNN CNN")
-    parser.add_argument("--metric", type=str, default="val_accuracy", help="Metric to plot (e.g., val_accuracy, val_loss)")
+    parser.add_argument("--metric", type=str, default="val_loss", help="Metric to plot (e.g., val_accuracy, val_loss)")
     args = parser.parse_args()
 
     for arch in args.arch:

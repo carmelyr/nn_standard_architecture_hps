@@ -24,13 +24,13 @@ datasets = {
     #"ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
     #"Beef": "datasets/Beef/Beef_TRAIN.txt",
     #"BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
-    "BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
+    #"BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
     #"BinaryHeartbeat": "datasets/BinaryHeartbeat/BinaryHeartbeat_TRAIN.txt",
     #"Car": "datasets/Car/Car_TRAIN.txt",
     #"CBF": "datasets/CBF/CBF_TRAIN.txt",
     #"CatsDogs": "datasets/CatsDogs/CatsDogs_TRAIN.ts",
     #"ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
-    #"CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
+    "CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
     #"CounterMovementJump": "datasets/CounterMovementJump/CounterMovementJump_TRAIN.ts",
     #"DucksAndGeese": "datasets/DucksAndGeese/DucksAndGeese_TRAIN.ts",
     #"EigenWorms": "datasets/EigenWorms/EigenWorms_TRAIN.ts",
@@ -125,13 +125,12 @@ def load_dataset(path, dataset_name=None):
                     for segment in segments[:-1]:
                         values = list(map(float, segment.split(",")))
                         series.append(values)
-                    data.append(np.array(series))  # (channels, time)
+                    data.append(np.array(series))   # (channels, time)
                     labels.append(segments[-1])
-            X = np.stack(data)  # (samples, channels, time)
+            X = np.stack(data)                      # (samples, channels, time)
             y = np.array(labels)
-            return X.transpose(0, 2, 1), y  # to (samples, time, channels)
+            return X.transpose(0, 2, 1), y          # to (samples, time, channels)
 
-        # infer train/test paths
         train_path = path.replace("_TEST.ts", "_TRAIN.ts")
         test_path = path
 
@@ -151,7 +150,6 @@ def load_dataset(path, dataset_name=None):
             data, meta = arff.loadarff(path)
             df = pd.DataFrame(data)
 
-            # Decode label column if needed
             if isinstance(df[df.columns[-1]].iloc[0], bytes):
                 df[df.columns[-1]] = df[df.columns[-1]].str.decode("utf-8")
             
@@ -161,7 +159,7 @@ def load_dataset(path, dataset_name=None):
             X = []
             for row in series_column:
                 if isinstance(row, (np.ndarray, np.float64, float)):
-                    values = np.array([float(row)])  # Convert scalar to 1D array
+                    values = np.array([float(row)])        # converts scalar to 1D array
                 elif isinstance(row, (str, bytes)):
                     if isinstance(row, bytes):
                         row = row.decode("utf-8")
@@ -178,7 +176,6 @@ def load_dataset(path, dataset_name=None):
                 X = X[:, :, np.newaxis]
                 
             return X, y
-
 
         X_train, y_train = load_arff(train_path)
         X_test, y_test = load_arff(test_path)
@@ -227,7 +224,7 @@ def load_dataset(path, dataset_name=None):
         else:
             X = X[:, ::downsample_factor]
 
-    # convert to tensors
+    # converts to tensors
     if X.ndim == 1:
         X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(-1).unsqueeze(-1)
     elif X.ndim == 2:
@@ -249,13 +246,6 @@ def load_dataset(path, dataset_name=None):
     return dataset, X_tensor.shape[1:], num_classes
 
 # this function saves the results of the training to a JSON file
-"""def save_results(arch_name, dataset_name, config_idx, metrics, fcnn_):
-    result_dir = os.path.join("results", arch_name)
-    os.makedirs(result_dir, exist_ok=True)
-    out_path = os.path.join(result_dir, f"{dataset_name}_config_{config_idx + 1}.json")
-    with open(out_path, "w") as f:
-        json.dump(metrics, f, indent=4)
-    print(f"Saved: {out_path}")"""
 def save_results(arch_name, dataset_name, config_idx, metrics, fcnn_seed):
     # directory structure
     config_id = config_idx + 1
@@ -270,10 +260,9 @@ def save_results(arch_name, dataset_name, config_idx, metrics, fcnn_seed):
         json.dump(metrics, f, indent=4)
     print(f"✔ Saved: {out_path}")
 
-
 # this function trains the FCNN model on the datasets
 def train_fcnn():
-    seeds = [5]
+    seeds = [3]
     config_space = get_fcnn_config_space()
 
     for fcnn_seed in seeds:
@@ -302,15 +291,15 @@ def train_fcnn():
 
         # 100 configurations
         #for config_idx in range(100):
-        for config_idx in range(4, 100):
+        for config_idx in range(93, 100):
             """sampled_config = dict(config_space.sample_configuration())
             sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}"""
 
-            # Always try to load hyperparameters from seed2 for consistency
+            # loads hyperparameters from a JSON file if exists
             config_id = config_idx + 1
-            if fcnn_seed == 5:
-                config_file = f"BirdChicken_config_{config_id}_seed2.json"
-                config_path = os.path.join("results", "FCNN", "BirdChicken", f"config_{config_id}", config_file)
+            if fcnn_seed == 3:
+                config_file = f"CinCECGTorso_config_{config_id}_seed2.json"
+                config_path = os.path.join("results", "FCNN", "CinCECGTorso", f"config_{config_id}", config_file)
                 
                 if os.path.exists(config_path):
                     with open(config_path, "r") as f:
@@ -329,8 +318,8 @@ def train_fcnn():
                     dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
                     
                     y_numpy = dataset.targets
-                    if len(y_numpy) > 1000:                     # Large dataset
-                        train_size = 50 * num_classes           # Fixed 50 samples per class
+                    if len(y_numpy) > 1000:                     # large dataset
+                        train_size = 50 * num_classes           # fixed 50 samples per class
                         sss = StratifiedShuffleSplit(n_splits=5, train_size=train_size, random_state=fcnn_seed)
                     else:
                         sss = StratifiedShuffleSplit(n_splits=5, test_size=0.2, random_state=fcnn_seed)
@@ -355,7 +344,7 @@ def train_fcnn():
                         
                         batch_size = min(32, len(train_dataset))
 
-                        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=os.cpu_count(), persistent_workers=True)
+                        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=os.cpu_count(), persistent_workers=True, drop_last=True)
                         val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=os.cpu_count(), persistent_workers=True)
 
 
@@ -376,7 +365,6 @@ def train_fcnn():
                         early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
                         trainer = pl.Trainer(
                             accelerator=accelerator,
-                            #devices=1,
                             max_epochs=1024,
                             precision=32,
                             enable_checkpointing=False,
@@ -439,7 +427,6 @@ def train_fcnn():
                         "avg_epochs": avg_metrics["epochs"]
                     }
 
-
                     save_results("FCNN", dataset_name, config_idx, metrics, fcnn_seed)
 
                     torch.cuda.empty_cache()
@@ -468,7 +455,6 @@ def train_fcnn():
                         "train_accuracy": [],
                         "val_accuracy": []
                     }
-
 
                     early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
                     trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, enable_checkpointing=False, logger=False, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping])

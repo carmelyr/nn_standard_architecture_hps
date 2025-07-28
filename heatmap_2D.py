@@ -4,6 +4,7 @@
 import os
 import json
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from json import JSONDecodeError
@@ -69,7 +70,31 @@ def generate_heatmap(df, metric="max_val_accuracy"):
     #pivot = df.groupby(["dataset", "classifier"])[metric].mean().unstack()
 
     plt.figure(figsize=(12, len(pivot) * 0.3))
-    sns.heatmap(pivot, annot=True, fmt=".2f", cmap="RdPu", vmin=0, vmax=1)
+    
+    ax = sns.heatmap(pivot, annot=False, fmt=".2f", cmap="RdPu", vmin=0, vmax=1)
+    
+    for i, row_idx in enumerate(pivot.index):
+        row_data = pivot.loc[row_idx]
+        max_val = row_data.max()
+        
+        for j, col_idx in enumerate(pivot.columns):
+            value = pivot.loc[row_idx, col_idx]
+            if pd.isna(value):
+                continue
+                
+            # checks if the value is highest in the row
+            is_max = abs(value - max_val) < 1e-10
+            
+            text = f"{value:.2f}"
+            if is_max:
+                ax.text(j + 0.5, i + 0.5, text, 
+                       horizontalalignment='center', verticalalignment='center',
+                       fontweight='bold', fontsize=10, color='white')
+            else:
+                ax.text(j + 0.5, i + 0.5, text,
+                       horizontalalignment='center', verticalalignment='center',
+                       fontweight='normal', fontsize=10, color='white')
+    
     plt.title(f"Validation Accuracy Heatmap ({metric})", fontweight='bold', fontsize=12)
     plt.xlabel("Classifier")
     plt.ylabel("Dataset")

@@ -25,7 +25,20 @@ class SuccessiveHalvingSimulator:
     def __init__(self, curve_data: np.ndarray, final_epoch: int = 1000):
         self.curves = curve_data
         self.configs, self.seeds, self.folds, self.epochs = curve_data.shape
-        self.final_scores = np.nanmean(self.curves[:, :, :, -1], axis=(1, 2))   # true final accuracy (average over all seeds and folds at the last epoch)
+        
+        # computes last valid value per fold/seed, then average across all
+        last_values = np.zeros((self.configs, self.seeds, self.folds))
+        for i in range(self.configs):
+            for j in range(self.seeds):
+                for k in range(self.folds):
+                    curve = self.curves[i, j, k]
+                    valid = ~np.isnan(curve)
+                    if np.any(valid):
+                        last_values[i, j, k] = curve[valid][-1]
+                    else:
+                        last_values[i, j, k] = np.nan
+        self.final_scores = np.nanmean(last_values, axis=(1, 2))
+
 
     # this function simulates the successive halving process
     def simulate(self, budget_epochs: List[int], top_k: int = 1):
@@ -129,8 +142,12 @@ def load_curve_data_from_json_from_files(file_list: List[str], max_epochs: int =
             seed_idx = seed_id - 1
             for fold_idx, fold in enumerate(seed_data["fold_logs"]):
                 acc = fold["val_accuracy"]
+                if not acc:
+                    continue  # skip if empty
                 length = min(len(acc), max_epochs)
-                curves[i, seed_idx, fold_idx, :length] = acc[:length]           # creates an empty matrix and fills it with the accuracy values from the JSON files
+                padded = np.full(max_epochs, fill_value=acc[-1])    # pad with last value
+                padded[:length] = acc[:length]
+                curves[i, seed_idx, fold_idx, :] = padded           # creates an empty matrix and fills it with the accuracy values from the JSON files
 
     return curves
 

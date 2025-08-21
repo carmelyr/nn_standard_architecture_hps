@@ -8,7 +8,7 @@ FCNN,Adiac,LinearRegression,0.3218,0.2827,0.1253,0.02,0.0967,0.0166
 FCNN,Beef,LinearRegression,0.5799,0.1634,0.0769,0.013,0.0611,0.0116
 FCNN,CounterMovementJump,LinearRegression,0.5376,0.1482,0.1148,0.0133,0.0958,0.0112
 FCNN,classification_ozone,LinearRegression,0.5233,0.2111,0.0304,0.0044,0.0238,0.0035
-FCNN,RightWhaleCalls,LinearRegression,0.1354,0.2181,0.0069,0.0012,0.0053,0.0011
+FCNN,RightWhaleCalls,LinearRegression,0.0583,0.3869,0.0074,0.0015,0.0055,0.0011
 FCNN,KeplerLightCurves,LinearRegression,0.5733,0.1368,0.0392,0.0054,0.0328,0.0047
 FCNN,FaultDetectionB,LinearRegression,0.6278,0.1227,0.1105,0.017,0.0893,0.0147
 FCNN,EigenWorms,LinearRegression,0.5899,0.1265,0.127,0.0121,0.1042,0.0132

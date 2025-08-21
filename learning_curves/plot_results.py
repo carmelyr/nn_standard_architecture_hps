@@ -116,6 +116,38 @@ def get_dataset_max_accuracy(dataset_name, metric="val_accuracy"):
     
     return max_acc if max_acc > 0 else 1.0
 
+def get_dataset_max_epochs(dataset_name):
+    """Get the maximum number of epochs across all models for this dataset."""
+    max_epochs = 0
+    models = ["CNN", "FCNN", "GRU", "LSTM", "Transformer"]
+    
+    for model in models:
+        try:
+            all_metrics = load_results(dataset_name, model)
+            if not all_metrics:
+                continue
+                
+            for fold_data in all_metrics:
+                # Check different possible metric keys to find epoch counts
+                for key in ["val_accuracy", "val_loss", "train_accuracy", "train_loss"]:
+                    if key in fold_data:
+                        epochs = len(fold_data[key])
+                        max_epochs = max(max_epochs, epochs)
+                        break
+                
+                # Also check fold_logs if present
+                if "fold_logs" in fold_data:
+                    for fold in fold_data["fold_logs"]:
+                        for key in ["val_accuracy", "val_loss", "train_accuracy", "train_loss"]:
+                            if key in fold:
+                                epochs = len(fold[key])
+                                max_epochs = max(max_epochs, epochs)
+                                break
+        except:
+            continue
+    
+    return max_epochs if max_epochs > 0 else 100  # fallback to 100 epochs
+
 def plot_learning_curves(dataset_name, metric="val_accuracy", arch_name="FCNN"):
     if dataset_name == "ALL":
         all_data = load_results("ALL", arch_name)
@@ -148,6 +180,8 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
             return 0.0
         return -np.mean(np.abs(diffs))  # negative = higher stability is better
 
+    # Get maximum epochs for this dataset across all models
+    dataset_max_epochs = get_dataset_max_epochs(dataset_name)
 
     base_path = os.path.join("results", arch_name, dataset_name)
     grouped = defaultdict(list)
@@ -216,6 +250,9 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
     
     # Increase tick label sizes
     plt.tick_params(axis='both', which='major', labelsize=18)
+    
+    # Set x-axis limits to dataset maximum across all models
+    plt.xlim(1, dataset_max_epochs)
     
     # Set y-axis limits with dataset-specific scaling (same as representative curves but no baseline)
     if "accuracy" in metric.lower():
@@ -342,12 +379,15 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
         upper = np.clip(curve + std_curve, 0.0, 1.0)
         plt.fill_between(epochs, lower, upper, alpha=0.1, color=colors[label])
 
+    # Set x-axis limits to dataset maximum across all models
+    plt.xlim(1, dataset_max_epochs)
+
     # Add baseline for accuracy metrics
     if "accuracy" in metric.lower():
         baseline = get_majority_class_baseline(dataset_name)
         if baseline is not None:
             plt.axhline(y=baseline, color='black', linestyle='--', linewidth=1.5, 
-                       alpha=0.7, label=f'Majority Class Baseline ({baseline:.3f})')
+                       alpha=0.7, label=f'Majority Class Baseline ({baseline:.2f})')
         
         # Set y-axis limits based on dataset-specific maximum with padding
         dataset_max = get_dataset_max_accuracy(dataset_name, metric)

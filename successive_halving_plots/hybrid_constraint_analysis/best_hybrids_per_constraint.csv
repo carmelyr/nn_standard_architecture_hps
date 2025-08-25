@@ -1,0 +1,7 @@
+Constraint,Best_Hybrid,Average_Performance,Budget_Strategy,Dropout_Strategy
+max_epochs_1000,Moderate_Gradual,0.9810,Moderate,Gradual
+max_epochs_2000,Aggressive_Gradual,0.9867,Aggressive,Gradual
+max_epochs_5000,Aggressive_Gradual,0.9943,Aggressive,Gradual
+max_time_hours_10,Conservative_Gradual,1.0000,Conservative,Gradual
+max_time_hours_24,Moderate_Gradual,1.0000,Moderate,Gradual
+max_time_hours_72,Moderate_Gradual,1.0000,Moderate,Gradual

@@ -2,20 +2,26 @@ Regressor,Feature,Count,Percentage
 Random Forest,learning_rate,78,74.28571428571429
 Random Forest,num_filters,7,6.666666666666667
 Random Forest,num_layers,11,10.476190476190476
-Random Forest,dropout_rate,8,7.6190476190476195
-Random Forest,pooling_max,1,0.9523809523809524
+Random Forest,dropout_rate,6,5.714285714285714
+Random Forest,output_activation_relu,1,0.9523809523809524
+Random Forest,hidden_units,1,0.9523809523809524
+Random Forest,pooling_mean,1,0.9523809523809524
 XGBoost,activation_tanh,2,1.9047619047619049
 XGBoost,activation_sigmoid,5,4.761904761904762
 XGBoost,num_filters,5,4.761904761904762
-XGBoost,num_layers,29,27.61904761904762
-XGBoost,learning_rate,46,43.80952380952381
+XGBoost,num_layers,16,15.238095238095239
+XGBoost,learning_rate,53,50.476190476190474
 XGBoost,pooling_size,3,2.857142857142857
 XGBoost,activation_relu,1,0.9523809523809524
-XGBoost,dropout_rate,1,0.9523809523809524
-XGBoost,bidirectional,1,0.9523809523809524
-XGBoost,pooling_max,12,11.428571428571429
-Linear Regression,learning_rate,101,96.19047619047619
+XGBoost,output_activation_gelu,4,3.8095238095238098
+XGBoost,output_activation_relu,4,3.8095238095238098
+XGBoost,output_activation_sigmoid,1,0.9523809523809524
+XGBoost,hidden_units,1,0.9523809523809524
+XGBoost,pooling_max,10,9.523809523809524
+Linear Regression,learning_rate,99,94.28571428571428
 Linear Regression,num_filters,1,0.9523809523809524
 Linear Regression,pooling_size,1,0.9523809523809524
+Linear Regression,output_activation_relu,1,0.9523809523809524
+Linear Regression,bidirectional,1,0.9523809523809524
 Linear Regression,pooling_max,1,0.9523809523809524
 Linear Regression,dropout_rate,1,0.9523809523809524

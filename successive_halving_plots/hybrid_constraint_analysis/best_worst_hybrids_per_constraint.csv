@@ -1,0 +1,7 @@
+Constraint_Type,Constraint_Value,Best_Hybrid,Best_Performance,Worst_Hybrid,Worst_Performance,Performance_Range
+max_epochs,1000,Aggressive_Gradual,0.9810,Standard_Aggressive,0.3467,0.6343
+max_epochs,2000,Aggressive_Gradual,0.9867,Standard_TwoStage,0.1790,0.8076
+max_epochs,5000,Aggressive_Gradual,0.9943,Standard_TwoStage,0.1981,0.7962
+max_time_hours,10,Conservative_Gradual,1.0000,Standard_TwoStage,0.1981,0.8019
+max_time_hours,24,Aggressive_Gradual,1.0000,Standard_TwoStage,0.1981,0.8019
+max_time_hours,72,Aggressive_Gradual,1.0000,Standard_TwoStage,0.1981,0.8019

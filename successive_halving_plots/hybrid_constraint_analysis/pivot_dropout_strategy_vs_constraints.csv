@@ -1,0 +1,8 @@
+Constraint_Type,max_epochs,max_epochs,max_epochs,max_time_hours,max_time_hours,max_time_hours
+Constraint_Value,1000,2000,5000,10,24,72
+Dropout_Strategy,,,,,,
+Aggressive,0.485,0.5935,0.5893,0.5657,0.5672,0.5672
+Gradual,0.9676,0.9829,0.9733,0.9935,0.9947,0.995
+Linear,0.9265,0.8987,0.949,0.8385,0.8415,0.8419
+Standard,0.7676,0.8632,0.8434,0.827,0.829,0.829
+TwoStage,0.7676,0.7379,0.661,0.549,0.5512,0.5512

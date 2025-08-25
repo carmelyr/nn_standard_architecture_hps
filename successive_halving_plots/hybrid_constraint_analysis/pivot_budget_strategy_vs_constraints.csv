@@ -1,0 +1,8 @@
+Constraint_Type,max_epochs,max_epochs,max_epochs,max_time_hours,max_time_hours,max_time_hours
+Constraint_Value,1000,2000,5000,10,24,72
+Budget_Strategy,,,,,,
+Aggressive,0.8221,0.8968,0.9211,0.9238,0.9257,0.9257
+Conservative,0.7547,0.8789,0.8381,0.6979,0.6998,0.7006
+Moderate,0.8221,0.7909,0.7211,0.7436,0.7444,0.7444
+Standard,0.6933,0.613,0.5874,0.4872,0.4876,0.4876
+VeryAggressive,0.8221,0.8968,0.9482,0.9211,0.9261,0.9261

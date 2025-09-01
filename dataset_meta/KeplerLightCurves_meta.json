@@ -1,0 +1,6 @@
+{
+  "dataset_name": "KeplerLightCurves",
+  "input_length": 4767,
+  "n_channels": 1,
+  "n_classes": 7
+}

@@ -1,0 +1,6 @@
+{
+  "dataset_name": "ArrowHead",
+  "input_length": 251,
+  "n_channels": 1,
+  "n_classes": 3
+}

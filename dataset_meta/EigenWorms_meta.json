@@ -1,0 +1,6 @@
+{
+  "dataset_name": "EigenWorms",
+  "input_length": 15000,
+  "n_channels": 6,
+  "n_classes": 5
+}

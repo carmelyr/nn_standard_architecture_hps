@@ -1,0 +1,6 @@
+{
+  "dataset_name": "classification_ozone",
+  "input_length": 1201,
+  "n_channels": 1,
+  "n_classes": 2
+}

@@ -1,0 +1,6 @@
+{
+  "dataset_name": "BirdChicken",
+  "input_length": 512,
+  "n_channels": 1,
+  "n_classes": 2
+}

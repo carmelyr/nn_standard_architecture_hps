@@ -1,0 +1,6 @@
+{
+  "dataset_name": "CounterMovementJump",
+  "input_length": 4250,
+  "n_channels": 1,
+  "n_classes": 3
+}

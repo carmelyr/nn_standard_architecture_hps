@@ -1,7 +1,6 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  annotations: {}
   name: carmely-nn-standard-hps-job-gru
   namespace: user-carmely-reiska
 spec:

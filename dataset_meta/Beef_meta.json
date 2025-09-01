@@ -1,0 +1,6 @@
+{
+  "dataset_name": "Beef",
+  "input_length": 470,
+  "n_channels": 1,
+  "n_classes": 5
+}

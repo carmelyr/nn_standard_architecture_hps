@@ -1,0 +1,6 @@
+{
+  "dataset_name": "RightWhaleCalls",
+  "input_length": 1,
+  "n_channels": 1,
+  "n_classes": 2
+}

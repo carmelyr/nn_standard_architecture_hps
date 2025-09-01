@@ -1,0 +1,6 @@
+{
+  "dataset_name": "DucksAndGeese",
+  "input_length": 4933,
+  "n_channels": 1,
+  "n_classes": 5
+}

@@ -1,0 +1,6 @@
+{
+  "dataset_name": "FaultDetectionB",
+  "input_length": 2560,
+  "n_channels": 1,
+  "n_classes": 3
+}

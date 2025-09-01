@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: carmely-nn-standard-hps-job-lstm
+  name: carmely-nn-standard-hps-job-transformer-3
   namespace: user-carmely-reiska
 spec:
   backoffLimit: 10
@@ -18,16 +18,16 @@ spec:
             - >
               set -euxo pipefail &&
               export POD_ID=${RUN_ID##*-} &&
-              mkdir -p /abyss/home/results/lstm/$POD_ID &&
+              mkdir -p /abyss/home/results/transformer/$POD_ID &&
               cd /abyss/home/nn_standard_architecture_hps &&
               mkdir -p results &&
-              if [ ! -d results/LSTM ]; then cp -r /abyss/home/nn_standard_architecture_hps/results/LSTM results/LSTM; fi &&
-              python train_lstm.py &&
-              echo "Contents of results/LSTM:" &&
-              ls -lh results/LSTM/ &&
-              cp -vr results/LSTM/* /abyss/home/results/lstm/$POD_ID/ &&
-              echo "Copied files to /abyss/home/results/lstm/$POD_ID:" &&
-              ls -lh /abyss/home/results/lstm/$POD_ID/
+              if [ ! -d results/Transformer ]; then cp -r /abyss/home/nn_standard_architecture_hps/results/Transformer results/Transformer; fi &&
+              python train_transformer.py --configs 1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59,60,61,62,63,64,65,66,67,68,69,70,71,72,73,74,75,76,77,78,79,80,81,82,83,84,85,86,87,88,89,90,91,92,93,94,95,96,97,98,99,100 &&
+              echo "Contents of results/Transformer:" &&
+              ls -lh results/Transformer/ &&
+              cp -vr results/Transformer/* /abyss/home/results/transformer/$POD_ID/ &&
+              echo "Copied files to /abyss/home/results/transformer/$POD_ID:" &&
+              ls -lh /abyss/home/results/transformer/$POD_ID/
           env:
             - name: RUN_ID
               valueFrom:
@@ -35,11 +35,11 @@ spec:
                   fieldPath: metadata.name
           resources:
             requests:
-              memory: "40Gi"
+              memory: "30Gi"
               cpu: "4"
               nvidia.com/gpu: "1"
             limits:
-              memory: "60Gi"
+              memory: "30Gi"
               cpu: "8"
               nvidia.com/gpu: "1"
           volumeMounts:
@@ -54,9 +54,9 @@ spec:
               readOnly: true
       imagePullSecrets:
         - name: registry-ro-login
+      nodeSelector:
+        kubernetes.io/hostname: fierna
       restartPolicy: Never
-      nodeSelector:   
-        kubernetes.io/hostname: belial
       volumes:
         - name: cephfs-home
           hostPath:

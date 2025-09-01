@@ -1,0 +1,6 @@
+{
+  "dataset_name": "CBF",
+  "input_length": 128,
+  "n_channels": 1,
+  "n_classes": 3
+}

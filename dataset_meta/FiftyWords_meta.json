@@ -1,0 +1,6 @@
+{
+  "dataset_name": "FiftyWords",
+  "input_length": 270,
+  "n_channels": 1,
+  "n_classes": 50
+}

@@ -1,0 +1,6 @@
+{
+  "dataset_name": "ChlorineConcentration",
+  "input_length": 166,
+  "n_channels": 1,
+  "n_classes": 3
+}

@@ -1,0 +1,6 @@
+{
+  "dataset_name": "CatsDogs",
+  "input_length": 4925,
+  "n_channels": 1,
+  "n_classes": 2
+}

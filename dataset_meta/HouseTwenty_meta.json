@@ -1,0 +1,6 @@
+{
+  "dataset_name": "HouseTwenty",
+  "input_length": 2000,
+  "n_channels": 1,
+  "n_classes": 2
+}

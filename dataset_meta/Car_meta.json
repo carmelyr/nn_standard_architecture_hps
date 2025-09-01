@@ -1,0 +1,6 @@
+{
+  "dataset_name": "Car",
+  "input_length": 577,
+  "n_channels": 1,
+  "n_classes": 4
+}

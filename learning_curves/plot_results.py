@@ -1,3 +1,6 @@
+# This script generates learning curves for different models and datasets
+# It generates learning curves with all available data points and representative subsets
+
 import os
 import json
 import argparse
@@ -6,23 +9,19 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from collections import defaultdict
 from matplotlib.lines import Line2D
-from matplotlib.patches import Patch
 from sktime.datasets import load_from_tsfile
 from scipy.io import arff
+from matplotlib.patches import Patch
 
 # returns the last valid (non-NaN) value in a list
 def last_valid(values):
     return next((v for v in reversed(values) if v is not None and not np.isnan(v)), np.nan)
 
+# this function calculates the majority class baseline accuracy for a dataset
+# calculated as: majority_class_accuracy = max_class_count / total_samples
 def get_majority_class_baseline(dataset_name):
-    """Calculate the majority class baseline accuracy for a dataset."""
-    # Define the dataset paths based on the patterns seen in the codebase
-    dataset_paths = {
-        "classification_ozone": "datasets/classification_ozone/y_train.csv",
-        # Most other datasets follow the pattern: datasets/{name}/{name}_TRAIN.{ext}
-    }
+    dataset_paths = {"classification_ozone": "datasets/classification_ozone/y_train.csv"}
     
-    # First try the specific path if defined
     if dataset_name in dataset_paths:
         try:
             y_train = pd.read_csv(dataset_paths[dataset_name]).values.squeeze().astype(int)
@@ -31,7 +30,6 @@ def get_majority_class_baseline(dataset_name):
         except:
             pass
     
-    # Try different file extensions and patterns
     possible_paths = [
         f"datasets/{dataset_name}/{dataset_name}_TRAIN.txt",
         f"datasets/{dataset_name}/{dataset_name}_TRAIN.ts",
@@ -48,25 +46,25 @@ def get_majority_class_baseline(dataset_name):
                 y_train = train_data[:, 0].astype(int)
             elif path.endswith(".ts"):
                 X, y = load_from_tsfile(path)
-                y_train = pd.factorize(y)[0]  # Convert to integer labels
+                y_train = pd.factorize(y)[0]                # converts to integer labels
             elif path.endswith(".arff"):
                 data, meta = arff.loadarff(path)
-                y_train = data[meta.names[-1]]  # Last column is usually the target
-                if hasattr(y_train[0], 'decode'):  # Handle byte strings
+                y_train = data[meta.names[-1]]              # last column is usually the target
+                if hasattr(y_train[0], 'decode'):           # handles byte strings
                     y_train = [y.decode() if hasattr(y, 'decode') else y for y in y_train]
                 y_train = pd.factorize(y_train)[0]
-            
-            # Calculate majority class proportion
+
+            # calculates the majority class baseline accuracy
             unique, counts = np.unique(y_train, return_counts=True)
             return np.max(counts) / len(y_train)
             
         except Exception as e:
             continue
     
-    # If we can't load the dataset, return None (will skip baseline)
     print(f"Warning: Could not calculate baseline for {dataset_name}")
     return None
 
+# this function loads the results for a specific dataset and architecture
 def load_results(dataset_name, arch_name):
     result_dir = os.path.join("results", arch_name)
 
@@ -95,8 +93,8 @@ def load_results(dataset_name, arch_name):
                     continue
     return all_metrics
 
+# this function retrieves the maximum accuracy for a specific dataset for later consistent y-axis scaling
 def get_dataset_max_accuracy(dataset_name, metric="val_accuracy"):
-    """Get the maximum accuracy achieved by any model for this dataset."""
     max_acc = 0.0
     models = ["CNN", "FCNN", "GRU", "LSTM", "Transformer"]
     
@@ -116,8 +114,8 @@ def get_dataset_max_accuracy(dataset_name, metric="val_accuracy"):
     
     return max_acc if max_acc > 0 else 1.0
 
+# this function retrieves the maximum number of epochs for a specific dataset for later consistent x-axis scaling
 def get_dataset_max_epochs(dataset_name):
-    """Get the maximum number of epochs across all models for this dataset."""
     max_epochs = 0
     models = ["CNN", "FCNN", "GRU", "LSTM", "Transformer"]
     
@@ -128,14 +126,13 @@ def get_dataset_max_epochs(dataset_name):
                 continue
                 
             for fold_data in all_metrics:
-                # Check different possible metric keys to find epoch counts
+                # checks different possible metrics to find epoch counts
                 for key in ["val_accuracy", "val_loss", "train_accuracy", "train_loss"]:
                     if key in fold_data:
                         epochs = len(fold_data[key])
                         max_epochs = max(max_epochs, epochs)
                         break
                 
-                # Also check fold_logs if present
                 if "fold_logs" in fold_data:
                     for fold in fold_data["fold_logs"]:
                         for key in ["val_accuracy", "val_loss", "train_accuracy", "train_loss"]:
@@ -148,42 +145,45 @@ def get_dataset_max_epochs(dataset_name):
     
     return max_epochs if max_epochs > 0 else 100  # fallback to 100 epochs
 
+# this function plots the learning curves for a specific dataset and architecture
 def plot_learning_curves(dataset_name, metric="val_accuracy", arch_name="FCNN"):
     if dataset_name == "ALL":
         all_data = load_results("ALL", arch_name)
         for name, metrics in all_data.items():
-            print(f"Plotting {name}...")
+            print(f"Plotting {name}")
             _plot_dataset(name, metrics, metric, arch_name)
     else:
         all_metrics = load_results(dataset_name, arch_name)
         _plot_dataset(dataset_name, all_metrics, metric, arch_name)
 
-# applies a centered rolling mean to smooth the metric curve
+# this function applies a centered rolling mean to smooth the metric curve
 def smooth_curve(values, window=5):
-    series = pd.Series(values)
-    return series.rolling(window, min_periods=1, center=True).mean().to_numpy()
+    series = pd.Series(values)                                                  # converts the input list to a pandas Series
+    return series.rolling(window, min_periods=1, center=True).mean().to_numpy() # applies a centered rolling mean
 
-# plots the learning curves for a specific dataset and architecture
+# this function plots the learning curves for a specific dataset and architecture
 def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5):
 
+    # this function retrieves the epoch at which a certain target is reached
     def get_reach_epoch(curve, target, tolerance=1e-4):
         try:
             return next(i for i, v in enumerate(curve) if v >= target - tolerance)
         except StopIteration:
             return len(curve)
 
+    # this function retrieves the stability of the curve
+    # stability is defined as the negative mean of the absolute differences between consecutive points
     def get_stability(curve, start_epoch=0):
-        curve = np.array(curve[start_epoch:])
-        diffs = np.diff(curve)
-        diffs = diffs[~np.isnan(diffs)]
+        curve = np.array(curve[start_epoch:])   # gets the relevant portion of the curve
+        diffs = np.diff(curve)                  # computes the differences between consecutive points
+        diffs = diffs[~np.isnan(diffs)]         # removes NaN values
         if len(diffs) == 0:
             return 0.0
-        return -np.mean(np.abs(diffs))  # negative = higher stability is better
+        return -np.mean(np.abs(diffs))          # negative = higher stability is better
 
-    # Get maximum epochs for this dataset across all models
-    dataset_max_epochs = get_dataset_max_epochs(dataset_name)
+    dataset_max_epochs = get_dataset_max_epochs(dataset_name)       # gets the maximum number of epochs for the dataset
 
-    base_path = os.path.join("results", arch_name, dataset_name)
+    base_path = os.path.join("results", arch_name, dataset_name)    # constructs the base path for the results
     grouped = defaultdict(list)
 
     # groups metrics by configuration ID
@@ -199,7 +199,7 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
                         data = json.load(file)
                         grouped[config_id].append(data)
                 except (json.JSONDecodeError, FileNotFoundError) as e:
-                    print(f"Warning: Skipping corrupted file {os.path.join(config_path, f)}: {e}")
+                    print(f"Skipping corrupted file {os.path.join(config_path, f)}: {e}")
                     continue
 
     os.makedirs(os.path.join("learning_curves", "plots", arch_name, dataset_name), exist_ok=True)
@@ -234,7 +234,7 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
 
         epochs = np.arange(1, len(config_mean_smoothed) + 1)
 
-        # Plot mean with standard deviation as shaded area
+        # plots mean with standard deviation as shaded area
         line = plt.plot(epochs, config_mean_smoothed, alpha=0.7, linewidth=1)
         color = line[0].get_color()
         lower = np.clip(config_mean_smoothed - config_std_smoothed, 0.0, 1.0)
@@ -248,34 +248,27 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
     plt.ylabel(metric.replace("_", " ").title(), fontsize=19, fontweight='bold')
     plt.grid(True)
     
-    # Increase tick label sizes
     plt.tick_params(axis='both', which='major', labelsize=18)
-    
-    # Set x-axis limits to dataset maximum across all models
+
+    # sets x-axis limits
     plt.xlim(1, dataset_max_epochs)
-    
-    # Set y-axis limits with dataset-specific scaling (same as representative curves but no baseline)
+
+    # sets y-axis limits with dataset-specific scaling (same as representative curves but no baseline)
     if "accuracy" in metric.lower():
-        # For accuracy metrics, use dataset-specific scaling with padding
         dataset_max = get_dataset_max_accuracy(dataset_name, metric)
-        # Add padding above the max value
         if dataset_max < 0.95:
-            # For lower accuracies, add 10% padding
+            # for lower accuracies, adds 10% padding
             upper_limit = dataset_max + 0.1 * (dataset_max - 0.0)
         else:
-            # For high accuracies (>0.95), add more fixed padding to avoid touching the border
-            upper_limit = min(1.08, dataset_max + 0.05)  # Allow more overshoot above 1.0 for better padding
+            # for high accuracies (>=0.95), adds more fixed padding
+            upper_limit = min(1.08, dataset_max + 0.05)  # allows more overshoot above 1.0 for better padding
         plt.ylim(0, upper_limit)
     else:
-        # For non-accuracy metrics, use standard 0-1 range
+        # for non-accuracy metrics, uses standard 0-1 range
         plt.ylim(0, 1)
     
     # legend for standard deviation
-    from matplotlib.patches import Patch
-    legend_elements = [
-        Line2D([0], [0], color='gray', alpha=0.7, linewidth=1, label='Mean'),
-        Patch(facecolor='gray', alpha=0.4, label='±1 Standard Deviation')
-    ]
+    legend_elements = [Line2D([0], [0], color='gray', alpha=0.7, linewidth=1, label='Mean'), Patch(facecolor='gray', alpha=0.4, label='±1 Standard Deviation')]
     plt.legend(handles=legend_elements, loc='lower right', fontsize=16)
 
     text = f"{len(grouped)} configs × {len(runs)} seeds × {len(seed_curves) // len(runs)} folds"
@@ -288,8 +281,9 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
     plt.close()
     print(f"[{dataset_name} - {arch_name}] Final {metric}: max={np.nanmax(final_vals):.4f}, mean={np.nanmean(final_vals):.4f}")
 
+
     # ---- Representative curves ---- #
-    print(f"Plotting representative curves for {dataset_name}...")
+    print(f"Plotting representative curves for {dataset_name}")
 
     # stores representative curves for each configuration
     config_curves = []
@@ -319,6 +313,7 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
         config_mean_smoothed = smooth_curve(config_mean, window=smooth_window)
         config_std_smoothed = smooth_curve(config_std, window=smooth_window)
 
+        # helper function to get best loss score
         def best_loss_score(curve, warmup=10):
             curve = np.array(curve)
             if np.all(np.isnan(curve)):
@@ -327,14 +322,18 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
 
         if metric.endswith("loss"):
             final_val = best_loss_score(config_mean_smoothed)
-            reach_epoch = np.nanargmin(config_mean_smoothed)
+            # finds when it reaches within 5% of best loss
+            target_loss = final_val * 1.05  # 5% worse than best
+            reach_epoch = get_reach_epoch(-np.array(config_mean_smoothed), -target_loss)
             stability = get_stability(config_mean_smoothed, reach_epoch)
             score = (final_val, -reach_epoch, stability)
         else:
             final_val = last_valid(config_mean_smoothed)
-            reach_epoch = get_reach_epoch(config_mean_smoothed, final_val)
+            # finds when it reaches 95% of final performance
+            target_accuracy = final_val * 0.95
+            reach_epoch = get_reach_epoch(config_mean_smoothed, target_accuracy)
             stability = get_stability(config_mean_smoothed, reach_epoch)
-            score = (final_val, -reach_epoch, stability)
+            score = (-final_val, reach_epoch, -stability)  # negative final_val for descending sort, positive reach_epoch for ascending
 
         config_curves.append((config_id, score, config_mean_smoothed, config_std_smoothed))
 
@@ -344,60 +343,59 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
         config_curves.sort(key=lambda x: x[1], reverse=not ascending)
 
         n = len(config_curves)
+
         indices = {
-            "Best": 0,
-            "3rd Quartile": int(0.25 * (n - 1)),
-            "Median": int(0.5 * (n - 1)),
-            "1st Quartile": int(0.75 * (n - 1)),
-            "Worst": n - 1
+            "Best": 0,                              # index of best config
+            "3rd Quartile": int(0.25 * (n - 1)),    # index of 3rd quartile config
+            "Median": int(0.5 * (n - 1)),           # index of median config
+            "1st Quartile": int(0.75 * (n - 1)),    # index of 1st quartile config
+            "Worst": n - 1                          # index of worst config
         }
 
     colors = {
-        "Worst": "#E41A1C",     # bright red
-        "1st Quartile": "#FF7F00",  # orange
-        "Median": "#4DAF4A",    # green
-        "3rd Quartile": "#377EB8",  # blue
-        "Best": "#984EA3"       # purple
+        "Worst": "#E41A1C", 
+        "1st Quartile": "#FF7F00",
+        "Median": "#4DAF4A",   
+        "3rd Quartile": "#377EB8",
+        "Best": "#984EA3"
     }
     
     markers = {
-        "Worst": "v",      # triangle down
-        "1st Quartile": "s",  # square
-        "Median": "o",     # circle
-        "3rd Quartile": "^",  # triangle up
-        "Best": "*"        # star
+        "Worst": "v",           # triangle down
+        "1st Quartile": "s",    # square
+        "Median": "o",          # circle
+        "3rd Quartile": "^",    # triangle up
+        "Best": "*"             # star
     }
 
     plt.figure(figsize=(12, 6))
+
     for label, idx in indices.items():
         config_id, _, curve, std_curve = config_curves[idx]
         epochs = np.arange(1, len(curve) + 1)
-        line = plt.plot(epochs, curve, label=f"{label} (config_{config_id})", 
-                       color=colors[label], linewidth=2, marker=markers[label], 
-                       markersize=6, markevery=max(1, len(epochs)//15))
+        line = plt.plot(epochs, curve, label=f"{label} (config_{config_id})", color=colors[label], linewidth=2, marker=markers[label], markersize=6, markevery=max(1, len(epochs)//15))
         lower = np.clip(curve - std_curve, 0.0, 1.0)
         upper = np.clip(curve + std_curve, 0.0, 1.0)
         plt.fill_between(epochs, lower, upper, alpha=0.1, color=colors[label])
 
-    # Set x-axis limits to dataset maximum across all models
+    # sets x-axis limits to dataset maximum across all models
     plt.xlim(1, dataset_max_epochs)
 
-    # Add baseline for accuracy metrics
+    # adds baseline for accuracy metrics
     if "accuracy" in metric.lower():
         baseline = get_majority_class_baseline(dataset_name)
         if baseline is not None:
-            plt.axhline(y=baseline, color='black', linestyle='--', linewidth=1.5, 
-                       alpha=0.7, label=f'Majority Class Baseline ({baseline:.2f})')
+            plt.axhline(y=baseline, color='black', linestyle='--', linewidth=1.5, alpha=0.7, label=f'Majority Class Baseline ({baseline:.2f})')
         
-        # Set y-axis limits based on dataset-specific maximum with padding
+        # sets y-axis limits based on dataset-specific maximum with padding
         dataset_max = get_dataset_max_accuracy(dataset_name, metric)
-        # Add padding above the max value
+        # adds padding above the max value
         if dataset_max < 0.95:
-            # For lower accuracies, add 10% padding
+            # for lower accuracies, adds 10% padding
             upper_limit = dataset_max + 0.1 * (dataset_max - 0.0)
         else:
-            # For high accuracies (>0.95), add more fixed padding to avoid touching the border
-            upper_limit = min(1.08, dataset_max + 0.05)  # Allow more overshoot above 1.0 for better padding
+            # for high accuracies (>0.95), adds more fixed padding to avoid touching the border
+            upper_limit = min(1.08, dataset_max + 0.05)  # more overshoot above 1.0 for better padding
         plt.ylim(0, upper_limit)
 
     plt.title(f"Representative Configs ({dataset_name} - {arch_name})\n{metric.replace('val_', 'Validation ').title()}", fontsize=21, fontweight='bold')
@@ -405,10 +403,8 @@ def _plot_dataset(dataset_name, all_metrics, metric, arch_name, smooth_window=5)
     plt.ylabel(metric.replace("_", " ").title(), fontsize=19, fontweight='bold')
     plt.grid(True)
     
-    # Increase tick label sizes
     plt.tick_params(axis='both', which='major', labelsize=18)
     
-    # Get existing legend handles and labels, then add std dev info
     handles, labels = plt.gca().get_legend_handles_labels()
     handles.append(Patch(facecolor='gray', alpha=0.4, label='±1 Standard Deviation'))
     labels.append('±1 Standard Deviation')

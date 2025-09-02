@@ -11,26 +11,42 @@ from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.impute import SimpleImputer
 from sklearn.metrics import mean_absolute_error
 
-# this function processes each CSV file from the surrogate_datasets directory
-def process_csv(csv_path, model_name, dataset_name):
+# this function processes all CSV files for a dataset by concatenating them
+def process_dataset(model_name, dataset_name, dataset_path):
     print(f"\nProcessing: {model_name}/{dataset_name}")
+    all_dfs = []
+    for fname in os.listdir(dataset_path):
+        if fname.endswith(".csv"):
+            csv_path = os.path.join(dataset_path, fname)
+            try:
+                df = pd.read_csv(csv_path)
+                if "val_acc_20" not in df.columns or len(df) < 5:
+                    continue
+                all_dfs.append(df)
+            except Exception as e:
+                print(f"Failed to read {csv_path}: {e}")
+
+    if not all_dfs:
+        print("No valid CSVs found. Skipping.")
+        return
+
+    df = pd.concat(all_dfs, ignore_index=True)
 
     try:
-        df = pd.read_csv(csv_path)
         if len(df) < 5:
-            print(f"Not enough total rows in {csv_path}. Skipping.")
+            print(f"Not enough total rows after concatenation. Skipping.")
             return
     except Exception as e:
-        print(f"Failed to read {csv_path}: {e}")
+        print(f"Failed to process concatenated data: {e}")
         return
 
     if "val_acc_20" not in df.columns:
-        print(f"'val_acc_20' missing in {csv_path}. Skipping.")
+        print(f"'val_acc_20' missing in concatenated data. Skipping.")
         return
 
-    hp_cols = [col for col in df.columns if col not in ["dataset"] and col.startswith(("dropout", "learning_rate", "num_", "activation", "kernel", "pooling", "bidirectional", "weight_decay", "ff_dim"))]
+    hp_cols = [col for col in df.columns if col.startswith(("dropout", "learning_rate", "num_", "activation", "kernel", "pooling", "bidirectional", "weight_decay", "ff_dim"))]
     if not hp_cols:
-        print(f"No hyperparameter columns in {csv_path}. Skipping.")
+        print(f"No hyperparameter columns in {dataset_name}. Skipping.")
         return
 
     X = df[hp_cols]
@@ -92,14 +108,14 @@ def process_csv(csv_path, model_name, dataset_name):
         all_preds.extend(y_pred)
         all_actuals.extend(y_val)
 
-    # computes mean ± std
+    # computes mean +- std
     r2_mean, r2_std = np.mean(r2_scores), np.std(r2_scores)
     rmse_mean, rmse_std = np.mean(rmse_scores), np.std(rmse_scores)
     mae_mean, mae_std = np.mean(mae_scores), np.std(mae_scores)
 
-    print(f"R²:   {r2_mean:.4f} ± {r2_std:.4f}")
+    print(f"R²: {r2_mean:.4f} ± {r2_std:.4f}")
     print(f"RMSE: {rmse_mean:.4f} ± {rmse_std:.4f}")
-    print(f"MAE:  {mae_mean:.4f} ± {mae_std:.4f}")
+    print(f"MAE: {mae_mean:.4f} ± {mae_std:.4f}")
 
     # saves to CSV
     results_dir = os.path.join("linear_regression_results", model_name)
@@ -135,12 +151,12 @@ def process_csv(csv_path, model_name, dataset_name):
 
     model_plot_dir = os.path.join("linear_regression_plots", model_name)
     os.makedirs(model_plot_dir, exist_ok=True)
-    plot_path = os.path.join(model_plot_dir, f"{model_name}_{dataset_name}_linear.png")
-    plt.savefig(plot_path, dpi=300)
+    plot_path = os.path.join(model_plot_dir, f"{model_name}_{dataset_name}_linear.pdf")
+    plt.savefig(plot_path, bbox_inches='tight', facecolor='white', edgecolor='none')
     plt.close()
     print(f"Saved plot to: {plot_path}")
 
-    # --- Save learning curve data to JSON --- #
+    # --- Saves learning curve data to JSON --- #
     learning_curve_data = {
         "dataset": dataset_name,
         "regressor": "LinearRegression",
@@ -162,6 +178,42 @@ def process_csv(csv_path, model_name, dataset_name):
 
     print(f"Saved learning curve data to: {json_path}")
 
+    # --- Feature Importance --- #
+    # trains LR on full data for interpretability plots
+    model_full = LinearRegression()
+    model_full.fit(X, y)
+
+    # Feature Importance (Coefficients) Plot (normalized)
+    coefs = model_full.coef_
+    coefs_abs = np.abs(coefs)
+
+    # normalizes to sum to 1 so the scale
+    total = coefs_abs.sum()
+    if total == 0:
+        importances = np.zeros_like(coefs_abs)
+    else:
+        importances = coefs_abs / total
+
+    indices = np.argsort(importances)[::-1]
+    feat_names = X.columns
+
+    plt.figure(figsize=(10, 6))
+    plt.title(f"{model_name}/{dataset_name} – Feature Importances", fontsize=14)
+    plt.barh(range(len(indices)), importances[indices], color='#2ca02c', edgecolor='k')
+    plt.yticks(range(len(indices)), feat_names[indices])
+    plt.xlabel("Importance (mean decrease in impurity)")
+    plt.gca().invert_yaxis()
+
+    plt.xlim(0, 1)
+    plt.tight_layout()
+
+    fi_dir = os.path.join(model_plot_dir, "feature_importance")
+    os.makedirs(fi_dir, exist_ok=True)
+    fi_path = os.path.join(fi_dir, f"{model_name}_{dataset_name}_feat_imp.pdf")
+    plt.savefig(fi_path, bbox_inches="tight", facecolor='white', edgecolor='none')
+    plt.close()
+    print(f"Saved feature importance to: {fi_path}")
+
 if __name__ == "__main__":
     BASE_DIR = "surrogate_datasets"
     for model_name in os.listdir(BASE_DIR):
@@ -174,7 +226,4 @@ if __name__ == "__main__":
             if not os.path.isdir(dataset_path):
                 continue
 
-            for fname in os.listdir(dataset_path):
-                if fname.endswith(".csv"):
-                    csv_path = os.path.join(dataset_path, fname)
-                    process_csv(csv_path, model_name, dataset_name)
+            process_dataset(model_name, dataset_name, dataset_path)

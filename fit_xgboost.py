@@ -68,15 +68,15 @@ def process_dataset(model_name, dataset_name, dataset_path):
         all_preds.extend(y_pred)
         all_actuals.extend(y_val)
 
-    # final mean ± std values
+    # final mean +- std values
     r2_mean, r2_std = np.mean(r2_scores), np.std(r2_scores)
     rmse_mean, rmse_std = np.mean(rmse_scores), np.std(rmse_scores)
     mae_mean, mae_std = np.mean(mae_scores), np.std(mae_scores)
 
     print("XGBoost Results (20x 80-20 Holdout):")
-    print(f"R²:   {r2_mean:.4f} ± {r2_std:.4f}")
+    print(f"R²: {r2_mean:.4f} ± {r2_std:.4f}")
     print(f"RMSE: {rmse_mean:.4f} ± {rmse_std:.4f}")
-    print(f"MAE:  {mae_mean:.4f} ± {mae_std:.4f}")
+    print(f"MAE: {mae_mean:.4f} ± {mae_std:.4f}")
 
     # saves CSV summary
     results_dir = os.path.join("xgboost_results", model_name)
@@ -111,12 +111,12 @@ def process_dataset(model_name, dataset_name, dataset_path):
 
     model_plot_dir = os.path.join("xgboost_plots", model_name)
     os.makedirs(model_plot_dir, exist_ok=True)
-    plot_path = os.path.join(model_plot_dir, f"{model_name}_{dataset_name}_xgb.png")
-    plt.savefig(plot_path, dpi=300)
+    plot_path = os.path.join(model_plot_dir, f"{model_name}_{dataset_name}_xgb.pdf")
+    plt.savefig(plot_path, bbox_inches='tight', facecolor='white', edgecolor='none')
     plt.close()
     print(f"Saved plot to: {plot_path}")
 
-    # --- Generate learning curves --- #
+    # --- Generates learning curves --- #
     train_sizes = [20, 40, 60, 80]
     metrics_per_size = {size: {'r2': [], 'rmse': [], 'mae': []} for size in train_sizes}
 
@@ -141,30 +141,7 @@ def process_dataset(model_name, dataset_name, dataset_path):
             metrics_per_size[size]['rmse'].append(np.sqrt(mean_squared_error(y_val, y_pred)))
             metrics_per_size[size]['mae'].append(mean_absolute_error(y_val, y_pred))
 
-    # --- Plot learning curves ---
-    """fig, ax = plt.subplots(3, 1, figsize=(7, 12))
-    metrics = ['r2', 'rmse', 'mae']
-    titles = ['R² Score', 'RMSE', 'MAE']
-
-    for i, metric in enumerate(metrics):
-        means = [np.mean(metrics_per_size[size][metric]) for size in train_sizes]
-        stds = [np.std(metrics_per_size[size][metric]) for size in train_sizes]
-
-        ax[i].errorbar(train_sizes, means, yerr=stds, label="XGBoost", marker='o', capsize=4)
-        ax[i].set_xlabel("Number of Training Examples")
-        ax[i].set_ylabel(titles[i])
-        ax[i].set_title(f"{titles[i]} vs Training Size — {dataset_name}")
-        ax[i].grid(True)
-
-    plt.tight_layout()
-    curve_plot_dir = os.path.join("xgboost_learning_curves", model_name)
-    os.makedirs(curve_plot_dir, exist_ok=True)
-    curve_path = os.path.join(curve_plot_dir, f"{model_name}_{dataset_name}_learning_curve.png")
-    plt.savefig(curve_path, dpi=300)
-    plt.close()
-    print(f"Saved learning curves to: {curve_path}")"""
-
-    # --- Save learning curve data to JSON --- #
+    # --- Saves learning curve data to JSON --- #
     learning_curve_data = {
         "dataset": dataset_name,
         "regressor": "XGBoost",
@@ -185,6 +162,29 @@ def process_dataset(model_name, dataset_name, dataset_path):
         json.dump(learning_curve_data, f, indent=2)
 
     print(f"Saved learning curve data to: {json_path}")
+
+    model_full = XGBRegressor()
+    model_full.fit(X, y)
+
+    # Feature Importance plot
+    importances = model_full.feature_importances_
+    indices = np.argsort(importances)[::-1]
+    feat_names = X.columns
+
+    plt.figure(figsize=(10, 6))
+    plt.title(f"{model_name}/{dataset_name} – Feature Importances", fontsize=14)
+    plt.barh(range(len(indices)), importances[indices], color='#2ca02c', edgecolor='k')
+    plt.yticks(range(len(indices)), feat_names[indices])
+    plt.xlabel("Importance (mean decrease in impurity)")
+    plt.gca().invert_yaxis()
+    plt.tight_layout()
+
+    fi_dir = os.path.join(model_plot_dir, "feature_importance")
+    os.makedirs(fi_dir, exist_ok=True)
+    fi_path = os.path.join(fi_dir, f"{model_name}_{dataset_name}_feat_imp.pdf")
+    plt.savefig(fi_path, bbox_inches="tight", facecolor='white', edgecolor='none')
+    plt.close()
+    print(f"Saved feature importance to: {fi_path}")
 
 if __name__ == "__main__":
     BASE_DIR = "surrogate_datasets"

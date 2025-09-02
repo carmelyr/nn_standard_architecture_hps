@@ -9,27 +9,40 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score, mean_squared_error, mean_absolute_error
 from sklearn.impute import SimpleImputer
-from sklearn.inspection import PartialDependenceDisplay
 
-def process_csv(csv_path, model_name, dataset_name):
+# this function processes all CSV files for a dataset by concatenating them
+def process_dataset(model_name, dataset_name, dataset_path):
     print(f"\nProcessing: {model_name}/{dataset_name}")
 
-    try:
-        df = pd.read_csv(csv_path)
-        if len(df) < 5:
-            print(f"Not enough total rows in {csv_path}. Skipping.")
-            return
-    except Exception as e:
-        print(f"Failed to read {csv_path}: {e}")
+    all_dfs = []
+    for fname in os.listdir(dataset_path):
+        if fname.endswith(".csv"):
+            csv_path = os.path.join(dataset_path, fname)
+            try:
+                df = pd.read_csv(csv_path)
+                if "val_acc_20" not in df.columns or len(df) < 5:
+                    continue
+                all_dfs.append(df)
+            except Exception as e:
+                print(f"Failed to read {csv_path}: {e}")
+
+    if not all_dfs:
+        print("No valid CSVs found. Skipping.")
+        return
+
+    df = pd.concat(all_dfs, ignore_index=True)
+
+    if len(df) < 5:
+        print(f"Not enough total rows after concatenation. Skipping.")
         return
 
     if "val_acc_20" not in df.columns:
-        print(f"'val_acc_20' missing in {csv_path}. Skipping.")
+        print(f"'val_acc_20' missing in concatenated data. Skipping.")
         return
 
     hp_cols = [col for col in df.columns if col.startswith(("dropout", "learning_rate", "num_", "activation", "kernel", "pooling", "bidirectional", "weight_decay", "ff_dim"))]
     if not hp_cols:
-        print(f"No hyperparameter columns in {csv_path}. Skipping.")
+        print(f"No hyperparameter columns in {dataset_name}. Skipping.")
         return
 
     X = df[hp_cols]
@@ -72,7 +85,7 @@ def process_csv(csv_path, model_name, dataset_name):
             metrics_per_size[size]['rmse'].append(np.sqrt(mean_squared_error(y_val, y_pred)))
             metrics_per_size[size]['mae'].append(mean_absolute_error(y_val, y_pred))
 
-    # --- Save learning curve data to JSON --- #
+    # --- Saves learning curve data to JSON --- #
     learning_curve_data = {
         "dataset": dataset_name,
         "regressor": "RandomForest",
@@ -128,7 +141,6 @@ def process_csv(csv_path, model_name, dataset_name):
             writer.writerow(["Model", "Dataset", "Regressor", "R2", "R2_std", "RMSE", "RMSE_std", "MAE", "MAE_std"])
         writer.writerow([model_name, dataset_name, "RandomForest", round(r2_mean, 4), round(r2_std, 4), round(rmse_mean, 4), round(rmse_std, 4), round(mae_mean, 4), round(mae_std, 4)])
 
-    # feature importance + PDP (train once just for explanation)
     model = RandomForestRegressor(n_estimators=100, random_state=42)
     model.fit(X, y)
 
@@ -150,27 +162,12 @@ def process_csv(csv_path, model_name, dataset_name):
 
     fi_dir = os.path.join(plot_base, "feature_importance")
     os.makedirs(fi_dir, exist_ok=True)
-    fi_path = os.path.join(fi_dir, f"{model_name}_{dataset_name}_feat_imp.png")
-    plt.savefig(fi_path, dpi=300, bbox_inches="tight")
+    fi_path = os.path.join(fi_dir, f"{model_name}_{dataset_name}_feat_imp.pdf")
+    plt.savefig(fi_path, bbox_inches="tight", facecolor='white', edgecolor='none')
     plt.close()
     print(f"Saved feature importance to: {fi_path}")
 
-    # --- Plot 2: Partial Dependence Plot --- #
-    top2 = indices[:2].tolist()
-    features = [feat_names[i] for i in top2]
-    fig, ax = plt.subplots(1, 2, figsize=(12, 5))
-    PartialDependenceDisplay.from_estimator(model, X, features, ax=ax)
-    plt.suptitle(f"{model_name}/{dataset_name} – Partial Dependence (top 2 features)", fontsize=16)
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-
-    pdp_dir = os.path.join(plot_base, "partial_dependence")
-    os.makedirs(pdp_dir, exist_ok=True)
-    pdp_path = os.path.join(pdp_dir, f"{model_name}_{dataset_name}_pdp.png")
-    plt.savefig(pdp_path, dpi=300, bbox_inches="tight")
-    plt.close()
-    print(f"Saved PDP to: {pdp_path}")
-
-    # --- Plot 3: Actual vs Predicted Scatter --- #
+    # --- Plot 2: Actual vs Predicted Scatter --- #
     plt.figure(figsize=(8, 6))
     plt.scatter(all_actuals, all_preds, color='#1f77b4', alpha=0.7, s=80, edgecolor='k', linewidth=0.5)
 
@@ -189,8 +186,8 @@ def process_csv(csv_path, model_name, dataset_name):
     props = dict(boxstyle='round', facecolor='white', alpha=0.8)
     plt.text(0.05, 0.95, textstr, transform=plt.gca().transAxes, fontsize=10, verticalalignment='top', bbox=props)
 
-    pred_path = os.path.join(plot_base, f"{model_name}_{dataset_name}_rf.png")
-    plt.savefig(pred_path, dpi=300, bbox_inches='tight')
+    pred_path = os.path.join(plot_base, f"{model_name}_{dataset_name}_rf.pdf")
+    plt.savefig(pred_path, bbox_inches='tight', facecolor='white', edgecolor='none')
     plt.close()
     print(f"Saved scatter plot to: {pred_path}")
 
@@ -206,7 +203,4 @@ if __name__ == "__main__":
             if not os.path.isdir(dataset_path):
                 continue
 
-            for fname in os.listdir(dataset_path):
-                if fname.endswith(".csv"):
-                    csv_path = os.path.join(dataset_path, fname)
-                    process_csv(csv_path, model_name, dataset_name)
+            process_dataset(model_name, dataset_name, dataset_path)

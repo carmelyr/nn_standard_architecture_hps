@@ -1,3 +1,4 @@
+import argparse
 import os
 import json
 import numpy as np
@@ -8,37 +9,36 @@ import random
 import shutil
 from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
-from config_spaces import get_fcnn_config_space, fcnn_seed
+from config_spaces import get_fcnn_config_space
 from model_builder import build_fcnn
 from pytorch_lightning.callbacks import EarlyStopping
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import Subset
-from sktime.datasets import load_from_tsfile
 from sklearn.preprocessing import LabelEncoder
 from scipy.io import arff
 
 datasets = {
-    #"classification_ozone": "datasets/classification_ozone/X_train.csv",
-    #"AbnormalHeartbeat": "datasets/AbnormalHeartbeat/AbnormalHeartbeat_TRAIN.txt",
-    #"Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
-    #"ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
-    #"Beef": "datasets/Beef/Beef_TRAIN.txt",
-    #"BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
-    #"BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
-    #"BinaryHeartbeat": "datasets/BinaryHeartbeat/BinaryHeartbeat_TRAIN.txt",
-    #"Car": "datasets/Car/Car_TRAIN.txt",
-    #"CBF": "datasets/CBF/CBF_TRAIN.txt",
-    #"CatsDogs": "datasets/CatsDogs/CatsDogs_TRAIN.ts",
-    #"ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
+    "classification_ozone": "datasets/classification_ozone/X_train.csv",
+    "AbnormalHeartbeat": "datasets/AbnormalHeartbeat/AbnormalHeartbeat_TRAIN.txt",
+    "Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
+    "ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
+    "Beef": "datasets/Beef/Beef_TRAIN.txt",
+    "BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
+    "BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
+    "BinaryHeartbeat": "datasets/BinaryHeartbeat/BinaryHeartbeat_TRAIN.txt",
+    "Car": "datasets/Car/Car_TRAIN.txt",
+    "CBF": "datasets/CBF/CBF_TRAIN.txt",
+    "CatsDogs": "datasets/CatsDogs/CatsDogs_TRAIN.ts",
+    "ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
     "CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
-    #"CounterMovementJump": "datasets/CounterMovementJump/CounterMovementJump_TRAIN.ts",
-    #"DucksAndGeese": "datasets/DucksAndGeese/DucksAndGeese_TRAIN.ts",
-    #"EigenWorms": "datasets/EigenWorms/EigenWorms_TRAIN.ts",
-    #"FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
-    #"FaultDetectionB": "datasets/FaultDetectionB/FaultDetectionB_TRAIN.ts",
-    #"HouseTwenty": "datasets/HouseTwenty/HouseTwenty_TRAIN.txt",
-    #"KeplerLightCurves": "datasets/KeplerLightCurves/KeplerLightCurves_TRAIN.ts",
-    #"RightWhaleCalls": "datasets/RightWhaleCalls/RightWhaleCalls_TRAIN.arff",
+    "CounterMovementJump": "datasets/CounterMovementJump/CounterMovementJump_TRAIN.ts",
+    "DucksAndGeese": "datasets/DucksAndGeese/DucksAndGeese_TRAIN.ts",
+    "EigenWorms": "datasets/EigenWorms/EigenWorms_TRAIN.ts",
+    "FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
+    "FaultDetectionB": "datasets/FaultDetectionB/FaultDetectionB_TRAIN.ts",
+    "HouseTwenty": "datasets/HouseTwenty/HouseTwenty_TRAIN.txt",
+    "KeplerLightCurves": "datasets/KeplerLightCurves/KeplerLightCurves_TRAIN.ts",
+    "RightWhaleCalls": "datasets/RightWhaleCalls/RightWhaleCalls_TRAIN.arff",
 }
 
 class JSONLogger(pl.callbacks.Callback):
@@ -204,14 +204,6 @@ def load_dataset(path, dataset_name=None):
     X = np.where(np.isposinf(X), 1e6, X)
     X = np.where(np.isneginf(X), -1e6, X)
 
-    #MAX_SEQ_LEN = 15000
-    #if X.shape[1] > MAX_SEQ_LEN:
-    #    print(f"[INFO] Truncating sequence length from {X.shape[1]} to {MAX_SEQ_LEN}")
-    #    if X.ndim == 3:
-    #        X = X[:, :MAX_SEQ_LEN, :]
-    #    else:
-    #        X = X[:, :MAX_SEQ_LEN]
-
     TARGET_SEQ_LEN = 5000
     
     if X.shape[1] > TARGET_SEQ_LEN:
@@ -258,11 +250,11 @@ def save_results(arch_name, dataset_name, config_idx, metrics, fcnn_seed):
 
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=4)
-    print(f"✔ Saved: {out_path}")
+    print(f" Saved: {out_path}")
 
 # this function trains the FCNN model on the datasets
-def train_fcnn():
-    seeds = [3]
+def train_fcnn(selected_config_indices):
+    seeds = [5]
     config_space = get_fcnn_config_space()
 
     for fcnn_seed in seeds:
@@ -290,28 +282,28 @@ def train_fcnn():
             print("Using CPU")
 
         # 100 configurations
-        #for config_idx in range(100):
-        for config_idx in range(93, 100):
-            """sampled_config = dict(config_space.sample_configuration())
-            sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}"""
-
-            # loads hyperparameters from a JSON file if exists
+        for config_idx in selected_config_indices:
             config_id = config_idx + 1
-            if fcnn_seed == 3:
-                config_file = f"CinCECGTorso_config_{config_id}_seed2.json"
-                config_path = os.path.join("results", "FCNN", "CinCECGTorso", f"config_{config_id}", config_file)
-                
-                if os.path.exists(config_path):
-                    with open(config_path, "r") as f:
-                        sampled_config = json.load(f)["hyperparameters"]
-                    print(f"[INFO] Loaded hyperparameters from seed2 for config_{config_id}: {sampled_config}")
-                else:
-                    raise FileNotFoundError(f"[ERROR] Cannot find: {config_path}")
-            else:
-                # fallback for other seeds or if not found
-                sampled_config = dict(config_space.sample_configuration())
-                sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
 
+            for dataset_name, dataset_path in datasets.items():
+                try:
+                    if fcnn_seed == 5:
+                        config_file = f"{dataset_name}_config_{config_id}_seed2.json"
+                        config_path = os.path.join("results", "FCNN", dataset_name, f"config_{config_id}", config_file)
+
+                        if os.path.exists(config_path):
+                            with open(config_path, "r") as f:
+                                sampled_config = json.load(f)["hyperparameters"]
+                            print(f"[INFO] Loaded hyperparameters from seed1 for {dataset_name} config_{config_id}")
+                        else:
+                            print(f"[SKIP] Missing seed1 config for {dataset_name} config_{config_id}")
+                            continue                    # skips the dataset if seed1 config is missing
+                    else:
+                        sampled_config = dict(config_space.sample_configuration())
+                        sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
+                except Exception as e:
+                    print(f"Failed to sample config for {dataset_name} config {config_id}: {e}")
+                    continue
 
             for dataset_name, dataset_path in datasets.items():
                 try:
@@ -332,27 +324,23 @@ def train_fcnn():
                         train_dataset = Subset(dataset, train_idx)
                         val_dataset = Subset(dataset, val_idx)
 
-                        """seq_len = input_shape[0] if isinstance(input_shape, (tuple, list)) else 0
+                        seq_len = input_shape[0] if isinstance(input_shape, (tuple, list)) else 0
                         if seq_len > 50000:
-                            batch_size = 4
-                        elif seq_len > 20000:
-                            batch_size = 8
-                        elif seq_len > 10000:
                             batch_size = 16
+                        elif seq_len > 20000:
+                            batch_size = 32
+                        elif seq_len > 10000:
+                            batch_size = 64
                         else:
-                            batch_size = 32"""
-                        
-                        batch_size = min(32, len(train_dataset))
+                            batch_size = 128
 
-                        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=os.cpu_count(), persistent_workers=True, drop_last=True)
+                        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=os.cpu_count(), persistent_workers=True, drop_last=False)
                         val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=os.cpu_count(), persistent_workers=True)
-
 
                         flat_input_size = int(np.prod(input_shape))
                         model = build_fcnn(sampled_config, flat_input_size, num_classes)
                         if torch.cuda.is_available():
                             model = model.to("cuda")
-
 
                         fold_log = {
                             "train_loss": [],
@@ -433,51 +421,19 @@ def train_fcnn():
                     shutil.rmtree("lightning_logs", ignore_errors=True)
                     shutil.rmtree("__pycache__", ignore_errors=True)
 
-
-                    """train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-                    val_loader = DataLoader(val_dataset, batch_size=32, shuffle=False)
-
-                    flat_input_size = int(np.prod(input_shape))
-                    model = build_fcnn(sampled_config, flat_input_size, num_classes)
-
-                    metrics = {
-                        "hyperparameters": sampled_config,
-                        "dataset_stats": {
-                            "name": dataset_name,
-                            "train_size": len(train_dataset),
-                            "val_size": len(val_dataset),
-                            "input_shape": input_shape,
-                            "num_classes": num_classes
-                        },
-                        "epochs": [],
-                        "train_loss": [],
-                        "val_loss": [],
-                        "train_accuracy": [],
-                        "val_accuracy": []
-                    }
-
-                    early_stopping = EarlyStopping(monitor="val_loss", patience=30, mode="min")
-                    trainer = pl.Trainer(accelerator=accelerator, max_epochs=1024, enable_checkpointing=False, logger=False, callbacks=[JSONLogger(metrics), EpochTimeLogger(metrics), early_stopping])
-
-                    try:
-                        trainer.fit(model, train_loader, val_loader)
-                        metrics["epochs"] = trainer.current_epoch
-                        save_results("FCNN", dataset_name, config_idx, metrics, fcnn_seed)
-
-                        # cleans up after success
-                        torch.cuda.empty_cache()
-                        shutil.rmtree("lightning_logs", ignore_errors=True)
-                        shutil.rmtree("__pycache__", ignore_errors=True)
-
-                    except Exception as e:
-                        print(f"Failed for {dataset_name} config {config_idx} seed {fcnn_seed}: {e}")
-                        shutil.rmtree("lightning_logs", ignore_errors=True)
-                        shutil.rmtree("__pycache__", ignore_errors=True)
-                        continue"""
-
                 except Exception as e:
                     print(f"Failed for {dataset_name} config {config_idx}: {e}")
                     continue
 
 if __name__ == "__main__":
-    train_fcnn()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--configs", type=str, help="Comma-separated list of config indices to run")
+    args = parser.parse_args()
+
+    if args.configs:
+        selected_config_ids = [int(i) for i in args.configs.split(",")]
+        selected_indices = [i - 1 for i in selected_config_ids]
+    else:
+        selected_indices = list(range(100))
+
+    train_fcnn(selected_indices)

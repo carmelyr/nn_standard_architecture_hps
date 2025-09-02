@@ -1,3 +1,4 @@
+import argparse
 import os
 import json
 import numpy as np
@@ -6,14 +7,13 @@ import torch
 import time
 import shutil
 import random
-from torch.utils.data import DataLoader, TensorDataset, random_split
+from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
-from config_spaces import get_lstm_config_space, lstm_seed
+from config_spaces import get_lstm_config_space
 from model_builder import build_lstm
 from pytorch_lightning.callbacks import EarlyStopping
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import Subset
-from sktime.datasets import load_from_tsfile
 from sklearn.preprocessing import LabelEncoder
 from scipy.io import  arff
 
@@ -199,7 +199,7 @@ def load_dataset(path, dataset_name=None):
         else:  # univariate case (samples, time)
             X = X[:, ::downsample_factor]
 
-    # Convert to tensors
+    # converts to tensors
     if X.ndim == 1:
         X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(-1).unsqueeze(-1)
     elif X.ndim == 2:
@@ -222,12 +222,10 @@ def load_dataset(path, dataset_name=None):
 
 # this method saves the results to a JSON file
 def save_results(arch_name, dataset_name, config_idx, metrics, lstm_seed):
-    # directory structure
     config_id = config_idx + 1
     result_dir = os.path.join("results", arch_name, dataset_name, f"config_{config_id}")
     os.makedirs(result_dir, exist_ok=True)
 
-    # full filename
     filename = f"{dataset_name}_config_{config_id}_seed{lstm_seed}.json"
     out_path = os.path.join(result_dir, filename)
 
@@ -236,8 +234,8 @@ def save_results(arch_name, dataset_name, config_idx, metrics, lstm_seed):
     print(f"Saved: {out_path}")
 
 # this method trains the LSTM model
-def train_lstm():
-    seeds = [2]
+def train_lstm(selected_config_indices):
+    seeds = [5]
     config_space = get_lstm_config_space()
 
     for lstm_seed in seeds:
@@ -268,12 +266,12 @@ def train_lstm():
             print("Using CPU")
 
         # 100 configurations
-        for config_idx in range(100):
+        for config_idx in selected_config_indices:
             config_id = config_idx + 1
 
             for dataset_name, dataset_path in datasets.items():
                 try:
-                    if lstm_seed == 2:
+                    if lstm_seed == 5:
                         config_file = f"{dataset_name}_config_{config_id}_seed1.json"
                         config_path = os.path.join("results", "LSTM", dataset_name, f"config_{config_id}", config_file)
 
@@ -311,13 +309,13 @@ def train_lstm():
 
                         seq_len = input_shape[0] if isinstance(input_shape, (tuple, list)) else 0
                         if seq_len > 50000:
-                            batch_size = 16
+                            batch_size = 8
                         elif seq_len > 20000:
-                            batch_size = 32
+                            batch_size = 16
                         elif seq_len > 10000:
-                            batch_size = 64
+                            batch_size = 16
                         else:
-                            batch_size = 128
+                            batch_size = 32
 
                         train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=(len(train_dataset) > batch_size), num_workers=0)
                         val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
@@ -354,8 +352,7 @@ def train_lstm():
                         torch.cuda.empty_cache()
                         shutil.rmtree("lightning_logs", ignore_errors=True)
                         shutil.rmtree("__pycache__", ignore_errors=True)
-                    
-                    # Aggregate metrics across folds
+                
                     avg_metrics = {
                         "train_loss": np.mean([m["train_loss"][-1] for m in fold_metrics]),
                         "val_loss": np.mean([m["val_loss"][-1] for m in fold_metrics]),
@@ -402,4 +399,14 @@ def train_lstm():
                     continue
 
 if __name__ == "__main__":
-    train_lstm()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--configs", type=str, help="Comma-separated list of config indices to run, e.g., 2,5,8")
+    args = parser.parse_args()
+
+    if args.configs:
+        selected_config_ids = [int(i) for i in args.configs.split(",")]
+        selected_indices = [i - 1 for i in selected_config_ids]
+    else:
+        selected_indices = list(range(100))
+
+    train_lstm(selected_indices)

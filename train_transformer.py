@@ -6,40 +6,39 @@ import torch
 import time
 import shutil
 import random
-from torch.utils.data import DataLoader, TensorDataset, random_split
+from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
-from config_spaces import get_transformer_config_space, transformer_seed
+from config_spaces import get_transformer_config_space
 from model_builder import build_transformer
 from pytorch_lightning.callbacks import EarlyStopping
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import Subset
-from sktime.datasets import load_from_tsfile
 from sklearn.preprocessing import LabelEncoder
 from scipy.io import arff
 import argparse
 
 datasets = {
-    #"classification_ozone": "datasets/classification_ozone/X_train.csv",
-    #"AbnormalHeartbeat": "datasets/AbnormalHeartbeat/AbnormalHeartbeat_TRAIN.txt",
-    #"Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
-    #"ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
-    #"Beef": "datasets/Beef/Beef_TRAIN.txt",
-    #"BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
-    #"BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
-    #"BinaryHeartbeat": "datasets/BinaryHeartbeat/BinaryHeartbeat_TRAIN.txt",
-    #"Car": "datasets/Car/Car_TRAIN.txt",
-    #"CBF": "datasets/CBF/CBF_TRAIN.txt",
-    #"CatsDogs": "datasets/CatsDogs/CatsDogs_TRAIN.ts",
-    #"ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
-    #"CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
-    #"CounterMovementJump": "datasets/CounterMovementJump/CounterMovementJump_TRAIN.ts",
-    #"DucksAndGeese": "datasets/DucksAndGeese/DucksAndGeese_TRAIN.ts",
-    #"EigenWorms": "datasets/EigenWorms/EigenWorms_TRAIN.ts",
-    #"FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
-    #"FaultDetectionB": "datasets/FaultDetectionB/FaultDetectionB_TRAIN.ts",
+    "classification_ozone": "datasets/classification_ozone/X_train.csv",
+    "AbnormalHeartbeat": "datasets/AbnormalHeartbeat/AbnormalHeartbeat_TRAIN.txt",
+    "Adiac": "datasets/Adiac/Adiac_TRAIN.txt",
+    "ArrowHead": "datasets/ArrowHead/ArrowHead_TRAIN.txt",
+    "Beef": "datasets/Beef/Beef_TRAIN.txt",
+    "BeetleFly": "datasets/BeetleFly/BeetleFly_TRAIN.txt",
+    "BirdChicken": "datasets/BirdChicken/BirdChicken_TRAIN.txt",
+    "BinaryHeartbeat": "datasets/BinaryHeartbeat/BinaryHeartbeat_TRAIN.txt",
+    "Car": "datasets/Car/Car_TRAIN.txt",
+    "CBF": "datasets/CBF/CBF_TRAIN.txt",
+    "CatsDogs": "datasets/CatsDogs/CatsDogs_TRAIN.ts",
+    "ChlorineConcentration": "datasets/ChlorineConcentration/ChlorineConcentration_TRAIN.txt",
+    "CinCECGTorso": "datasets/CinCECGTorso/CinCECGTorso_TRAIN.txt",
+    "CounterMovementJump": "datasets/CounterMovementJump/CounterMovementJump_TRAIN.ts",
+    "DucksAndGeese": "datasets/DucksAndGeese/DucksAndGeese_TRAIN.ts",
+    "EigenWorms": "datasets/EigenWorms/EigenWorms_TRAIN.ts",
+    "FiftyWords": "datasets/FiftyWords/FiftyWords_TRAIN.txt",
+    "FaultDetectionB": "datasets/FaultDetectionB/FaultDetectionB_TRAIN.ts",
     "HouseTwenty": "datasets/HouseTwenty/HouseTwenty_TRAIN.txt",
-    #"KeplerLightCurves": "datasets/KeplerLightCurves/KeplerLightCurves_TRAIN.ts",
-    #"RightWhaleCalls": "datasets/RightWhaleCalls/RightWhaleCalls_TRAIN.arff",
+    "KeplerLightCurves": "datasets/KeplerLightCurves/KeplerLightCurves_TRAIN.ts",
+    "RightWhaleCalls": "datasets/RightWhaleCalls/RightWhaleCalls_TRAIN.arff",
 }
 
 class JSONLogger(pl.callbacks.Callback):
@@ -207,7 +206,7 @@ def load_dataset(path, dataset_name=None):
 
     num_classes = len(np.unique(y))
     dataset = TensorDataset(X_tensor, y_tensor)
-    dataset.targets = y  # For stratified split
+    dataset.targets = y  # for stratified split
 
     print(f"\nDataset: {dataset_name}")
     print(f"X shape: {X.shape}, y shape: {y.shape}")
@@ -218,12 +217,10 @@ def load_dataset(path, dataset_name=None):
 
 # this method is used to save the results of the training
 def save_results(arch_name, dataset_name, config_idx, metrics, transformer_seed):
-    # directory structure
     config_id = config_idx + 1
     result_dir = os.path.join("results", arch_name, dataset_name, f"config_{config_id}")
     os.makedirs(result_dir, exist_ok=True)
 
-    # full filename
     filename = f"{dataset_name}_config_{config_id}_seed{transformer_seed}.json"
     out_path = os.path.join(result_dir, filename)
 
@@ -278,9 +275,11 @@ def train_transformer(selected_config_indices):
                             print(f"[SKIP] Missing seed1 config for {dataset_name} config_{config_id}")
                             continue            # skips the dataset if seed1 config is missing
                     else:
+                        # for seed1: generate and store new config if missing
                         sampled_config = dict(config_space.sample_configuration())
                         sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
-                        
+                        print(f"[INFO] Sampled NEW config for seed1 {dataset_name} config_{config_id}")
+
                     print(f"\nTraining on {dataset_name} with config {config_idx + 1}")
                     
                     dataset, input_shape, num_classes = load_dataset(dataset_path, dataset_name)
@@ -302,11 +301,15 @@ def train_transformer(selected_config_indices):
                         val_dataset = Subset(dataset, val_idx)
 
                         seq_len = input_shape[0] if isinstance(input_shape, (tuple, list)) else 0
-                        if seq_len > 50000:
+                        model_dim = sampled_config.get("d_model", 64)  # fallback if not in config
+
+                        seq_complexity = seq_len * model_dim
+
+                        if seq_complexity > 2e6:
                             batch_size = 8
-                        elif seq_len > 20000:
+                        elif seq_complexity > 1e6:
                             batch_size = 16
-                        elif seq_len > 10000:
+                        elif seq_complexity > 5e5:
                             batch_size = 32
                         else:
                             batch_size = 32
@@ -419,9 +422,9 @@ if __name__ == "__main__":
 
     if args.configs:
         selected_config_ids = [int(i) for i in args.configs.split(",")]
-        selected_indices = [i - 1 for i in selected_config_ids]  # shift back to 0-indexed
+        selected_indices = [i - 1 for i in selected_config_ids]
     else:
-        selected_indices = list(range(100))  # default: run all
+        selected_indices = list(range(100))
 
     train_transformer(selected_indices)
 

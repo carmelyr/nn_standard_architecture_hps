@@ -6,14 +6,13 @@ import torch
 import time
 import shutil
 import random
-from torch.utils.data import DataLoader, TensorDataset, random_split
+from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
-from config_spaces import get_cnn_config_space, cnn_seed
+from config_spaces import get_cnn_config_space
 from model_builder import build_cnn
 from pytorch_lightning.callbacks import EarlyStopping
 from sklearn.model_selection import StratifiedShuffleSplit
 from torch.utils.data import Subset
-from sktime.datasets import load_from_tsfile
 from sklearn.preprocessing import LabelEncoder
 from scipy.io import arff
 
@@ -222,18 +221,16 @@ def load_dataset(path, dataset_name=None):
 
 # this function saves the results of the training to a JSON file
 def save_results(arch_name, dataset_name, config_idx, metrics, cnn_seed):
-    # directory structure
     config_id = config_idx + 1
     result_dir = os.path.join("results", arch_name, dataset_name, f"config_{config_id}")
     os.makedirs(result_dir, exist_ok=True)
 
-    # full filename
     filename = f"{dataset_name}_config_{config_id}_seed{cnn_seed}.json"
     out_path = os.path.join(result_dir, filename)
 
     with open(out_path, "w") as f:
         json.dump(metrics, f, indent=4)
-    print(f"✔ Saved: {out_path}")
+    print(f"Saved: {out_path}")
 
 # this function trains the CNN model on the datasets
 # - samples configurations from the config space and trains the model on each dataset

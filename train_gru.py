@@ -6,9 +6,9 @@ import torch
 import time
 import random
 import shutil
-from torch.utils.data import DataLoader, TensorDataset, random_split
+from torch.utils.data import DataLoader, TensorDataset
 import pytorch_lightning as pl
-from config_spaces import get_gru_config_space, gru_seed
+from config_spaces import get_gru_config_space
 from model_builder import build_gru
 from pytorch_lightning.callbacks import EarlyStopping
 from torch.utils.data import Subset
@@ -169,7 +169,7 @@ def load_dataset(path, dataset_name=None):
     else:
         raise ValueError(f"Unsupported file format: {path}")
     
-    # Merge train and test
+    # train and test
     X = np.concatenate([X_train, X_test])
     y = np.concatenate([y_train, y_test])
 
@@ -186,6 +186,7 @@ def load_dataset(path, dataset_name=None):
 
     TARGET_SEQ_LEN = 5000
     
+    # downsamples sequences longer than TARGET_SEQ_LEN
     if X.shape[1] > TARGET_SEQ_LEN:
         original_length = X.shape[1]
         downsample_factor = int(np.ceil(original_length / TARGET_SEQ_LEN))
@@ -196,7 +197,7 @@ def load_dataset(path, dataset_name=None):
         else:
             X = X[:, ::downsample_factor]
 
-    # Convert to tensors
+    # converts to tensors
     if X.ndim == 1:
         X_tensor = torch.tensor(X, dtype=torch.float32).unsqueeze(-1).unsqueeze(-1)
     elif X.ndim == 2:
@@ -208,7 +209,7 @@ def load_dataset(path, dataset_name=None):
 
     num_classes = len(np.unique(y))
     dataset = TensorDataset(X_tensor, y_tensor)
-    dataset.targets = y  # For stratified split
+    dataset.targets = y  # for stratified split
 
     print(f"\nDataset: {dataset_name}")
     print(f"X shape: {X.shape}, y shape: {y.shape}")
@@ -219,12 +220,10 @@ def load_dataset(path, dataset_name=None):
 
 # this function is used to save the results of the training
 def save_results(arch_name, dataset_name, config_idx, metrics, gru_seed):
-    # directory structure
     config_id = config_idx + 1
     result_dir = os.path.join("results", arch_name, dataset_name, f"config_{config_id}")
     os.makedirs(result_dir, exist_ok=True)
 
-    # full filename
     filename = f"{dataset_name}_config_{config_id}_seed{gru_seed}.json"
     out_path = os.path.join(result_dir, filename)
 
@@ -277,7 +276,7 @@ def train_gru():
                             print(f"[INFO] Loaded hyperparameters from seed5 for {dataset_name} config_{config_id}")
                         else:
                             print(f"[SKIP] Missing seed5 config for {dataset_name} config_{config_id}")
-                            continue  # Skip this dataset if seed5 config is missing
+                            continue  # skips this dataset if seed5 config is missing
                     else:
                         sampled_config = dict(config_space.sample_configuration())
                         sampled_config = {k: v.item() if isinstance(v, np.generic) else v for k, v in sampled_config.items()}
@@ -288,7 +287,7 @@ def train_gru():
                     print(f"Input shape: {input_shape}, Num classes: {num_classes}")
 
                     y_numpy = dataset.targets
-                    if len(y_numpy) > 1000:  # Large dataset
+                    if len(y_numpy) > 1000:  # large dataset
                         train_size = 50 * num_classes
                         sss = StratifiedShuffleSplit(n_splits=5, train_size=train_size, random_state=gru_seed)
                     else:
@@ -347,7 +346,7 @@ def train_gru():
                         shutil.rmtree("lightning_logs", ignore_errors=True)
                         shutil.rmtree("__pycache__", ignore_errors=True)
                     
-                    # Aggregate metrics across folds
+                    # aggregates metrics across folds
                     avg_metrics = {
                         "train_loss": np.mean([m["train_loss"][-1] for m in fold_metrics]),
                         "val_loss": np.mean([m["val_loss"][-1] for m in fold_metrics]),

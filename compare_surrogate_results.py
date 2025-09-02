@@ -1,7 +1,6 @@
 import os
 import pandas as pd
 
-# result directories for different surrogate models
 result_dirs = {
     "XGBoost": "xgboost_results",
     "RandomForest": "random_forest_results",
@@ -12,7 +11,7 @@ all_results = []
 
 for regressor, base_dir in result_dirs.items():
     if not os.path.exists(base_dir):
-        print(f"Directory {base_dir} not found. Skipping...")
+        print(f"Directory {base_dir} not found. Skipping.")
         continue
 
     for model_name in os.listdir(base_dir):

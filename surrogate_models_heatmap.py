@@ -2,7 +2,6 @@ import os
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from itertools import combinations
 
 def load_and_combine_results():
     base_dirs = {
@@ -11,7 +10,7 @@ def load_and_combine_results():
         'XGBoost': 'xgboost_results'
     }
 
-    dfs = []
+    dfs = []    # list of DataFrames
     for regressor, base_dir in base_dirs.items():
         if not os.path.exists(base_dir):
             print(f"Warning: base directory '{base_dir}' does not exist.")
@@ -50,6 +49,8 @@ def generate_pairwise_summary_heatmaps(combined_df):
         out_dir = f"surrogate_heatmaps_summary/{model_arch}"
         os.makedirs(out_dir, exist_ok=True)
 
+        # prepares data for all three metrics
+        heatmap_data_dict = {}
         for metric in metrics:
             pivot = df_model.pivot(index="Dataset", columns="Regressor", values=metric)
 
@@ -74,21 +75,57 @@ def generate_pairwise_summary_heatmaps(combined_df):
                         else:
                             diff = (pivot[reg_a] - pivot[reg_b]).mean()     # higher R² is better
                         heatmap_data.loc[reg_a, reg_b] = diff
+            
+            heatmap_data_dict[metric] = heatmap_data.astype(float)
 
-            # plots the heatmap
-            plt.figure(figsize=(8, 6))
-            ax = sns.heatmap(heatmap_data.astype(float), cmap="coolwarm", center=0, annot=True, fmt=".3f", annot_kws={"size": 10}, linewidths=0.5, square=True, cbar=True)
-            ax.collections[0].colorbar.set_label(f"{metric} Difference (A - B)", fontsize=10)
-            plt.title(f"{model_arch} - {metric} Avg Difference (Regressor vs. Regressor)", fontsize=12, fontweight='bold')
-            plt.suptitle("Red = A better, Blue = B better", fontsize=9, y=0.98)
-            plt.xlabel("Regressor B", fontweight='bold')
-            plt.ylabel("Regressor A", fontweight='bold')
+        # creates combined plot with all three metrics side by side
+        if len(heatmap_data_dict) == 3:  # combined plot only, if all metrics are available
+            fig, axes = plt.subplots(1, 3, figsize=(16, 5))
+            
+            for i, metric in enumerate(metrics):
+                ax = axes[i]
+                heatmap_data = heatmap_data_dict[metric]
+                
+                sns.heatmap(heatmap_data, cmap="coolwarm", center=0, annot=True, fmt=".3f", annot_kws={"size": 12}, linewidths=0.5, square=True, cbar=True, ax=ax)
+                ax.set_title(f"{metric} Avg Difference", fontsize=14, fontweight='bold')
+                ax.set_xlabel("Regressor B", fontweight='bold', fontsize=12)
+
+                if i == 0:
+                    ax.set_ylabel("Regressor A", fontweight='bold', fontsize=12)
+                else:
+                    ax.set_ylabel("")
+                
+                ax.tick_params(axis='both', which='major', labelsize=11)
+            
+            fig.suptitle(f"{model_arch} - Regressor Performance Comparison\nRed = A better, Blue = B better", fontsize=16, fontweight='bold', y=1.05)
+            
+            plt.subplots_adjust(wspace=0.15)
             plt.tight_layout()
 
-            filename = f"{metric}_summary_heatmap.png"
-            plt.savefig(os.path.join(out_dir, filename), bbox_inches="tight", dpi=300)
+            # saves combined plot
+            filename = "combined_summary_heatmap.pdf"
+            plt.savefig(os.path.join(out_dir, filename), bbox_inches="tight", facecolor='white', edgecolor='none')
             plt.close()
-            print(f"Saved summary heatmap to: {os.path.join(out_dir, filename)}")
+            print(f"Saved combined summary heatmap to: {os.path.join(out_dir, filename)}")
+        
+        # saves individual plots
+        for metric in metrics:
+            if metric in heatmap_data_dict:
+                heatmap_data = heatmap_data_dict[metric]
+                
+                plt.figure(figsize=(8, 6))
+                ax = sns.heatmap(heatmap_data, cmap="coolwarm", center=0, annot=True, fmt=".3f", annot_kws={"size": 10}, linewidths=0.5, square=True, cbar=True)
+                ax.collections[0].colorbar.set_label(f"{metric} Difference (A - B)", fontsize=10)
+                plt.title(f"{model_arch} - {metric} Avg Difference (Regressor vs. Regressor)", fontsize=12, fontweight='bold')
+                plt.suptitle("Red = A better, Blue = B better", fontsize=9, y=0.98)
+                plt.xlabel("Regressor B", fontweight='bold')
+                plt.ylabel("Regressor A", fontweight='bold')
+                plt.tight_layout()
+
+                filename = f"{metric}_summary_heatmap.pdf"
+                plt.savefig(os.path.join(out_dir, filename), bbox_inches="tight", facecolor='white', edgecolor='none')
+                plt.close()
+                print(f"Saved individual summary heatmap to: {os.path.join(out_dir, filename)}")
 
 
 # this function generates pairwise heatmaps for each dataset and model architecture
@@ -147,17 +184,16 @@ def generate_dataset_pairwise_heatmaps(combined_df):
                 plt.xlabel("Regressor B", fontweight='bold')
                 plt.ylabel("Regressor A", fontweight='bold')
                 plt.tight_layout()
-                filename = f"{metric}_pairwise_heatmap.png"
-                plt.savefig(os.path.join(out_dir, filename), dpi=300)
+                filename = f"{metric}_pairwise_heatmap.pdf"
+                plt.savefig(os.path.join(out_dir, filename), bbox_inches="tight", facecolor='white', edgecolor='none')
                 plt.close()
                 print(f"Saved pairwise heatmap to: {os.path.join(out_dir, filename)}")
 
 
 if __name__ == "__main__":
-    print("Loading and combining results...")
+    print("Loading and combining results")
     combined_df = load_and_combine_results()
-    print("Generating heatmaps...")
+    print("Generating heatmaps")
     generate_pairwise_summary_heatmaps(combined_df)
-    print("Generating per-dataset pairwise heatmaps...")
+    print("Generating per-dataset pairwise heatmaps")
     generate_dataset_pairwise_heatmaps(combined_df)
-    print("All heatmaps generated successfully!")

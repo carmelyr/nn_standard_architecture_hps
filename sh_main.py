@@ -49,6 +49,43 @@ def run_all_models():
     
     budget_epochs = sorted(list(all_budget_epochs))
 
+    # First pass: collect global maximum regret across all models
+    print("Collecting global regret maximum across all models...")
+    global_regret_max = float('-inf')
+
+    for model in models:
+        base_dir = os.path.join(base_root, model)
+        for dataset in sorted(os.listdir(base_dir)):
+            dataset_path = os.path.join(base_dir, dataset)
+            if not os.path.isdir(dataset_path):
+                continue
+            
+            if dataset == "classification_ozone":
+                json_files = glob.glob(os.path.join(dataset_path, "config_*", "classification_ozone_config_*_seed*.json"))
+            else:
+                json_files = glob.glob(os.path.join(dataset_path, "config_*", f"{dataset}_config_*_seed*.json"))
+            
+            if len(json_files) == 0:
+                continue
+            
+            try:
+                curves = load_curve_data_from_json_from_files(json_files, max_epochs=max_epochs)
+                sim = SuccessiveHalvingSimulator(curves)
+                
+                for k in top_k_values:
+                    hits, regrets = sim.simulate(budget_epochs=budget_epochs, top_k=k)
+                    regrets_array = np.array(regrets)
+                    global_regret_max = max(global_regret_max, np.max(regrets_array))
+            except Exception as e:
+                continue
+
+    # Add padding to global regret limit
+    regrets_padding = global_regret_max * 0.05
+    global_regret_ylim = (0, global_regret_max + regrets_padding)
+    
+    print(f"Global regret y-limit: {global_regret_ylim}")
+
+    # Second pass: process models with consistent regret y-limits
     for model in models:
         hybrid_output_dir = "/Users/carmely/GitHub/nn_standard_architecture_hps/successive_halving_plots/hybrid_schedules"
         os.makedirs(hybrid_output_dir, exist_ok=True)
@@ -98,9 +135,9 @@ def run_all_models():
             except Exception as e:
                 print(f"Skipped {model}/{dataset} due to error: {e}")
 
-        plot_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs, os.path.join(plot_root, model), model)
+        plot_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs, os.path.join(plot_root, model), model, global_regret_ylim)
         save_csv(all_hits_by_k, all_regrets_by_k, budget_epochs, os.path.join(csv_root, model), model, dataset_names)
-        plot_k_axis_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs, os.path.join(plot_root, model), model)
+        plot_k_axis_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs, os.path.join(plot_root, model), model, global_regret_ylim)
 
 # this function creates hybrid schedules by combining budget and dropout schedules
 # it takes the budget and dropout schedules as input and produces a set of hybrid schedules
@@ -163,7 +200,7 @@ def save_hybrid_results_csv(hybrid_results, model, dataset, output_dir):
             writer.writerow([schedule_name, round(final_hit, 4), round(final_regret, 6), total_rounds])
 
 # this function plots boxplots for hit probabilities and regrets
-def plot_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs: List[int], output_dir: str, model: str):
+def plot_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs: List[int], output_dir: str, model: str, global_regret_ylim=None):
     os.makedirs(output_dir, exist_ok=True)
 
     for k in all_hits_by_k:
@@ -199,6 +236,11 @@ def plot_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs: List[int], out
         ax2.set_title(f"Regret ({model})", fontsize=18, fontweight='bold')
         ax2.set_xlabel("Epoch Budget", fontsize=16)
         ax2.set_ylabel("Regret", fontsize=16)
+        
+        # Apply global regret y-limit if provided
+        if global_regret_ylim:
+            ax2.set_ylim(global_regret_ylim)
+        
         ax2.grid(True)
         ax2.tick_params(axis='both', which='major', labelsize=16)
 
@@ -207,7 +249,7 @@ def plot_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs: List[int], out
         plt.close()
 
 # this function plots boxplots for hit probabilities and regrets
-def plot_k_axis_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs: List[int], output_dir: str, model: str):
+def plot_k_axis_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs: List[int], output_dir: str, model: str, global_regret_ylim=None):
     os.makedirs(output_dir, exist_ok=True)
     num_budgets = len(budget_epochs)
 
@@ -255,11 +297,18 @@ def plot_k_axis_boxplots(all_hits_by_k, all_regrets_by_k, budget_epochs: List[in
         plt.figure(figsize=(6, 4))
         sns.boxplot(data=regrets_per_k, palette=pink_palette)
         plt.xticks(ticks=range(len(k_values)), labels=[f"k={k}" for k in k_values], fontsize=12)
-        plt.yscale("log")
         plt.title(f"Regret for Final k-Best (Epoch={budget}) ({model})", fontsize=14, fontweight='bold')
         plt.xlabel("Top-k Value", fontsize=12)
-        plt.ylabel("Regret (log scale)", fontsize=12)
-        plt.grid(True, which="both")
+        plt.ylabel("Regret", fontsize=12)
+        
+        # Apply global regret y-limit if provided (remove log scale when using consistent limits)
+        if global_regret_ylim:
+            plt.ylim(global_regret_ylim)
+        else:
+            plt.yscale("log")
+            plt.ylabel("Regret (log scale)", fontsize=12)
+        
+        plt.grid(True)
         plt.tick_params(axis='both', which='major', labelsize=11)
         plt.tight_layout()
         plt.savefig(os.path.join(output_dir, f"{model}_k_axis_regret_epoch{budget}.pdf"), bbox_inches='tight', facecolor='white', edgecolor='none')
@@ -291,7 +340,7 @@ def main():
     
     # runs resource constraint analysis
     print("\nCreating resource-constrained analysis...")
-    create_resource_constraint_analysis()
+    #create_resource_constraint_analysis()
 
 if __name__ == "__main__":
     main()

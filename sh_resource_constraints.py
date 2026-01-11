@@ -760,22 +760,28 @@ def analyze_hybrid_performance_patterns(all_hybrid_results, output_dir):
                         dropout_performance[dropout_type] = []
                     dropout_performance[dropout_type].append(avg_perf)
     
+    # Calculate means
+    budget_means = {k: np.mean(v) for k, v in budget_performance.items()}
+    dropout_means = {k: np.mean(v) for k, v in dropout_performance.items()}
+    
     # plots budget strategy effectiveness
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
     
-    budget_means = {k: np.mean(v) for k, v in budget_performance.items()}
     ax1.bar(budget_means.keys(), budget_means.values(), color=pink_palette)
     ax1.set_title('Budget Strategy Performance Under Tight Constraints', fontsize=16, fontweight='bold')
     ax1.set_ylabel('Average Performance', fontsize=14)
     ax1.tick_params(axis='x', rotation=45, labelsize=12)
     ax1.tick_params(axis='y', labelsize=12)
+    ax1.set_ylim(0.0, 1.0)  # Fixed y-axis limits from 0 to 1
+    ax1.grid(True, alpha=0.3)  # Add grid for better readability
     
-    dropout_means = {k: np.mean(v) for k, v in dropout_performance.items()}
     ax2.bar(dropout_means.keys(), dropout_means.values(), color=pink_palette)
     ax2.set_title('Dropout Strategy Performance Under Tight Constraints', fontsize=16, fontweight='bold')
     ax2.set_ylabel('Average Performance', fontsize=14)
     ax2.tick_params(axis='x', rotation=45, labelsize=12)
     ax2.tick_params(axis='y', labelsize=12)
+    ax2.set_ylim(0.0, 1.0)  # Fixed y-axis limits from 0 to 1
+    ax2.grid(True, alpha=0.3)  # Add grid for better readability
     
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "hybrid_strategy_effectiveness.pdf"), bbox_inches='tight', facecolor='white', edgecolor='none')
